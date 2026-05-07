@@ -11,20 +11,22 @@ export default function App() {
 
   const [price, setPrice] = useState(0);
   const [prevPrice, setPrevPrice] = useState(0);
+
   const [oc, setOc] = useState(0);
   const [obc, setObc] = useState(0);
   const [qty, setQty] = useState(1);
-  const [logs, setLogs] = useState([]);
+
   const [history, setHistory] = useState([]);
+  const [logs, setLogs] = useState([]);
 
   const intervalRef = useRef(null);
 
-  /* ---------------- LIVE SYNC ---------------- */
+  /* ---------------- LIVE ENGINE ---------------- */
 
   useEffect(() => {
     let active = true;
 
-    const fetchData = async () => {
+    const load = async () => {
       try {
         const { data: market } = await supabase
           .from("market_state")
@@ -33,15 +35,13 @@ export default function App() {
           .single();
 
         if (market && active) {
-          setPrevPrice((p) => {
-            setHistory((h) => {
-              const newHist = [...h, market.current_price].slice(-20);
-              return newHist;
-            });
-            return price;
-          });
-
+          setPrevPrice(price);
           setPrice(market.current_price);
+
+          setHistory((h) => {
+            const updated = [...h, market.current_price].slice(-20);
+            return updated;
+          });
         }
 
         const { data: wallet } = await supabase
@@ -54,14 +54,14 @@ export default function App() {
           setOc(wallet.oc_balance);
           setObc(wallet.obc_balance);
         }
-      } catch (err) {
-        console.log(err.message);
+      } catch (e) {
+        console.log(e.message);
       }
     };
 
-    fetchData();
+    load();
 
-    intervalRef.current = setInterval(fetchData, 5000);
+    intervalRef.current = setInterval(load, 5000);
 
     return () => {
       active = false;
@@ -85,87 +85,83 @@ export default function App() {
     }
   };
 
-  /* ---------------- UI ANIMATION ---------------- */
-
   const isUp = price > prevPrice;
   const isDown = price < prevPrice;
 
   /* ---------------- UI ---------------- */
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "#050505",
-        color: "white",
-        display: "flex",
-        fontFamily: "Arial",
-      }}
-    >
-      {/* LEFT PANEL */}
+    <div style={{ display: "flex", height: "100vh", background: "#0b0b0b", color: "white" }}>
+
+      {/* LEFT SIDEBAR */}
       <div style={{ width: "22%", background: "#111", padding: 15 }}>
-        <h3>ACCOUNT</h3>
-        <p>OC: {oc}</p>
-        <p>OBC: {obc}</p>
+        <h2>OBBO USER</h2>
+
         <p>ID: {userId}</p>
 
         <hr />
 
-        <h4>HISTORY</h4>
-        <div style={{ fontSize: 12 }}>
-          {history.slice(-5).map((p, i) => (
-            <div key={i}>{p}</div>
-          ))}
-        </div>
+        <p>OC: {oc}</p>
+        <p>OBC: {obc}</p>
+
+        <hr />
+
+        <h3>MENU</h3>
+        <p>Dashboard</p>
+        <p>Bank</p>
+        <p>History</p>
+        <p>Support</p>
       </div>
 
-      {/* CENTER (COIN WORLD) */}
-      <div
-        style={{
-          flex: 1,
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        {/* OBBO COIN */}
+      {/* CENTER GAME AREA */}
+      <div style={{ flex: 1, textAlign: "center", paddingTop: 60 }}>
+
+        {/* WARNING BAR */}
+        <div style={{ background: "red", padding: 5, fontSize: 12 }}>
+          ⚠ OBBO is not responsible for trading loss
+        </div>
+
+        {/* COIN */}
         <div
           style={{
+            margin: "40px auto",
             width: 220,
             height: 220,
             borderRadius: "50%",
             background: "gold",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 42,
-            fontWeight: "bold",
             color: "black",
-            boxShadow: isUp
-              ? "0 0 40px lime"
-              : isDown
-              ? "0 0 40px red"
-              : "0 0 40px gold",
-            transform: isUp
-              ? "scale(1.05)"
-              : isDown
-              ? "scale(0.98)"
-              : "scale(1)",
-            transition: "all 0.3s ease",
+            fontSize: 40,
+            fontWeight: "bold",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            boxShadow: isUp ? "0 0 40px lime" : isDown ? "0 0 40px red" : "0 0 30px gold",
+            transform: isUp ? "scale(1.05)" : isDown ? "scale(0.98)" : "scale(1)",
+            transition: "all 0.3s",
           }}
         >
           🅱 {price}
         </div>
 
-        <p style={{ opacity: 0.6 }}>
-          {isUp ? "🟢 UP" : isDown ? "🔴 DOWN" : "⚪ STABLE"}
-        </p>
+        <p>{isUp ? "🟢 UP" : isDown ? "🔴 DOWN" : "⚪ STABLE"}</p>
+
+        {/* HISTORY */}
+        <div style={{ marginTop: 20 }}>
+          <h4>HISTORY</h4>
+          {history.map((h, i) => (
+            <span key={i} style={{ marginRight: 5 }}>{h}</span>
+          ))}
+        </div>
+
+        {/* GUARANTEE BAR */}
+        <div style={{ background: "green", padding: 5, marginTop: 20, fontSize: 12 }}>
+          OBBO guarantees OC 1 = PKR 1 at withdrawal
+        </div>
       </div>
 
       {/* RIGHT PANEL */}
-      <div style={{ width: "28%", background: "#111", padding: 15 }}>
-        <h3>TRADE</h3>
+      <div style={{ width: "25%", background: "#111", padding: 15 }}>
+        <h2>TRADE</h2>
 
         <input
           type="number"
@@ -174,29 +170,20 @@ export default function App() {
           style={{ width: "100%", padding: 10 }}
         />
 
-        <button
-          onClick={() => trade("BUY")}
-          style={{ width: "50%", background: "green", padding: 10 }}
-        >
+        <button onClick={() => trade("BUY")} style={{ width: "50%", background: "green" }}>
           BUY
         </button>
 
-        <button
-          onClick={() => trade("SELL")}
-          style={{ width: "50%", background: "red", padding: 10 }}
-        >
+        <button onClick={() => trade("SELL")} style={{ width: "50%", background: "red" }}>
           SELL
         </button>
 
-        <hr />
-
-        <h4>LOGS</h4>
+        <h3>LOGS</h3>
         {logs.map((l, i) => (
-          <div key={i} style={{ fontSize: 12 }}>
-            {l}
-          </div>
+          <div key={i} style={{ fontSize: 12 }}>{l}</div>
         ))}
       </div>
+
     </div>
   );
 }
