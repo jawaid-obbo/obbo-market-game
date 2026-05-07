@@ -9,7 +9,7 @@ const supabase = createClient(
 export default function App() {
   const userId = "000001";
 
-  const [view, setView] = useState("dashboard");
+  const [view, setView] = useState("market");
 
   const [price, setPrice] = useState(0);
   const [prevPrice, setPrevPrice] = useState(0);
@@ -42,7 +42,7 @@ export default function App() {
           setPrice(market.current_price);
 
           setHistory((h) =>
-            [...h, market.current_price].slice(-30)
+            [...h, market.current_price].slice(-25)
           );
         }
 
@@ -89,6 +89,43 @@ export default function App() {
   const isUp = price > prevPrice;
   const isDown = price < prevPrice;
 
+  /* ---------------- SIMPLE LINE CHART ---------------- */
+
+  const Chart = () => {
+    if (history.length < 2) return <p>No chart data</p>;
+
+    const max = Math.max(...history);
+    const min = Math.min(...history);
+
+    return (
+      <div style={{ marginTop: 20 }}>
+        <svg width="100%" height="120">
+          {history.map((p, i) => {
+            if (i === 0) return null;
+
+            const x1 = (i - 1) * (300 / history.length);
+            const x2 = i * (300 / history.length);
+
+            const y1 = 100 - ((history[i - 1] - min) / (max - min || 1)) * 100;
+            const y2 = 100 - ((p - min) / (max - min || 1)) * 100;
+
+            return (
+              <line
+                key={i}
+                x1={x1}
+                y1={y1}
+                x2={x2}
+                y2={y2}
+                stroke="lime"
+                strokeWidth="2"
+              />
+            );
+          })}
+        </svg>
+      </div>
+    );
+  };
+
   /* ---------------- NAV ---------------- */
 
   const Nav = () => (
@@ -101,20 +138,20 @@ export default function App() {
 
       <hr />
 
-      <button onClick={() => setView("dashboard")}>Dashboard</button>
+      <button onClick={() => setView("market")}>Market</button>
       <button onClick={() => setView("bank")}>Bank</button>
       <button onClick={() => setView("history")}>History</button>
       <button onClick={() => setView("support")}>Support</button>
     </div>
   );
 
-  /* ---------------- DASHBOARD ---------------- */
+  /* ---------------- MARKET ---------------- */
 
-  const Dashboard = () => (
-    <div style={{ flex: 1, textAlign: "center", paddingTop: 60 }}>
-      
+  const Market = () => (
+    <div style={{ flex: 1, textAlign: "center", paddingTop: 40 }}>
+
       <div style={{ background: "red", padding: 5, fontSize: 12 }}>
-        ⚠ OBBO is not responsible for trading loss
+        ⚠ OBBO not responsible for trading loss
       </div>
 
       <div
@@ -148,28 +185,27 @@ export default function App() {
 
       <p>{isUp ? "🟢 UP" : isDown ? "🔴 DOWN" : "⚪ STABLE"}</p>
 
-      <div>
+      <Chart />
+
+      <div style={{ marginTop: 10 }}>
         HISTORY:
         {history.slice(-10).map((h, i) => (
           <span key={i} style={{ marginLeft: 5 }}>{h}</span>
         ))}
       </div>
+
     </div>
   );
 
-  /* ---------------- BANK ---------------- */
+  /* ---------------- OTHER VIEWS ---------------- */
 
   const Bank = () => (
     <div style={{ flex: 1, padding: 20 }}>
       <h2>BANK</h2>
-      <p>Deposit (coming soon)</p>
-      <p>Withdraw (coming soon)</p>
-      <p>OC: {oc}</p>
-      <p>OBC: {obc}</p>
+      <p>Deposit coming soon</p>
+      <p>Withdraw coming soon</p>
     </div>
   );
-
-  /* ---------------- HISTORY ---------------- */
 
   const History = () => (
     <div style={{ flex: 1, padding: 20 }}>
@@ -180,17 +216,13 @@ export default function App() {
     </div>
   );
 
-  /* ---------------- SUPPORT ---------------- */
-
   const Support = () => (
     <div style={{ flex: 1, padding: 20 }}>
       <h2>SUPPORT</h2>
-      <p>Send message (UI only)</p>
-      <textarea style={{ width: "100%", height: 100 }} />
+      <textarea style={{ width: "100%", height: 120 }} />
+      <button>Send</button>
     </div>
   );
-
-  /* ---------------- TRADE PANEL ---------------- */
 
   const Trade = () => (
     <div style={{ width: "25%", background: "#111", padding: 15 }}>
@@ -218,13 +250,13 @@ export default function App() {
     </div>
   );
 
-  /* ---------------- MAIN RENDER ---------------- */
+  /* ---------------- MAIN ---------------- */
 
   return (
     <div style={{ display: "flex", height: "100vh", background: "#0b0b0b", color: "white" }}>
       <Nav />
 
-      {view === "dashboard" && <Dashboard />}
+      {view === "market" && <Market />}
       {view === "bank" && <Bank />}
       {view === "history" && <History />}
       {view === "support" && <Support />}
