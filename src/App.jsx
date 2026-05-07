@@ -1,214 +1,133 @@
 import { useEffect, useState } from "react";
+import { createClient } from "@supabase/supabase-js";
+
+/* ---------------- SUPABASE ---------------- */
+const supabase = createClient(
+  "https://vwgmzqujbrttrjtdapqh.supabase.co",
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ3Z216cXVqYnJ0dHJqdGRhcHFoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwOTI0MzYsImV4cCI6MjA5MzY2ODQzNn0.VP3coulUoEMOcRl84-9Q4-VH7IxLdtS7CdY3xrhYE8Q"
+);
 
 export default function App() {
-  const [price, setPrice] = useState(129);
-  const [oc, setOc] = useState(8697);
-  const [obc, setObc] = useState(10);
+  const [price, setPrice] = useState(0);
+  const [oc, setOc] = useState(0);
+  const [obc, setObc] = useState(0);
   const [qty, setQty] = useState(1);
   const [logs, setLogs] = useState([]);
+  const userId = "000001";
 
-  // fake live movement for testing
+  /* ---------------- LOAD DATA ---------------- */
+  const loadData = async () => {
+    try {
+      // PRICE
+      const { data: market } = await supabase
+        .from("market_state")
+        .select("current_price")
+        .eq("id", 1)
+        .single();
+
+      if (market) setPrice(market.current_price);
+
+      // WALLET
+      const { data: wallet } = await supabase
+        .from("wallets")
+        .select("*")
+        .eq("user_id", userId)
+        .single();
+
+      if (wallet) {
+        setOc(wallet.oc_balance);
+        setObc(wallet.obc_balance);
+      }
+    } catch (err) {
+      console.log("Load error:", err.message);
+    }
+  };
+
   useEffect(() => {
-    const interval = setInterval(() => {
-      setPrice((p) => {
-        const move = Math.random() > 0.5 ? 1 : -1;
-        return Math.max(125, Math.min(170, p + move));
-      });
-    }, 3000);
-
+    loadData();
+    const interval = setInterval(loadData, 2000);
     return () => clearInterval(interval);
   }, []);
 
-  const buy = () => {
-    const cost = qty * price;
-    const fee = Math.round(cost * 0.01);
-    const total = cost + fee;
+  /* ---------------- TRADE ---------------- */
+  const trade = async (type) => {
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "trade-execute",
+        {
+          body: {
+            user_id: userId,
+            type,
+            quantity: qty,
+          },
+        }
+      );
 
-    if (oc < total) {
-      alert("Not enough OC");
-      return;
+      if (error) {
+        alert(error.message);
+        return;
+      }
+
+      if (data) {
+        setOc(data.oc);
+        setObc(data.obc);
+        setPrice(data.price);
+
+        setLogs((prev) => [
+          `${type} ${qty} OBC @ ${data.price} | Fee ${data.fee}`,
+          ...prev,
+        ]);
+      }
+    } catch (err) {
+      console.log("Trade error:", err.message);
     }
-
-    setOc(oc - total);
-    setObc(obc + qty);
-
-    setLogs([
-      `BUY ${qty} OBC @ ${price} | Fee ${fee}`,
-      ...logs
-    ]);
   };
 
-  const sell = () => {
-    const gain = qty * price;
-    const fee = Math.round(gain * 0.01);
-    const total = gain - fee;
-
-    if (obc < qty) {
-      alert("Not enough OBC");
-      return;
-    }
-
-    setObc(obc - qty);
-    setOc(oc + total);
-
-    setLogs([
-      `SELL ${qty} OBC @ ${price} | Fee ${fee}`,
-      ...logs
-    ]);
-  };
-
+  /* ---------------- UI ---------------- */
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "black",
-        color: "white",
-        padding: "20px",
-        fontFamily: "Arial"
-      }}
-    >
-      <h1
-        style={{
-          textAlign: "center",
-          fontSize: "40px",
-          marginBottom: "30px"
-        }}
-      >
-        OBBO MARKET GAME
-      </h1>
+    <div style={{ background: "black", color: "white", minHeight: "100vh", padding: 20 }}>
+      
+      <h1 style={{ textAlign: "center" }}>OBBO MARKET GAME</h1>
 
-      <div
-        style={{
-          background: "#111",
-          padding: "20px",
-          borderRadius: "12px",
-          marginBottom: "20px",
-          textAlign: "center"
-        }}
-      >
+      {/* PRICE */}
+      <div style={{ textAlign: "center", margin: 20 }}>
         <h2>LIVE PRICE</h2>
+        <div style={{ fontSize: 40, color: "lime" }}>{price}</div>
+      </div>
 
-        <div
-          style={{
-            fontSize: "50px",
-            color: "#00ff88",
-            fontWeight: "bold"
-          }}
-        >
-          {price} OC
+      {/* WALLET */}
+      <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ flex: 1, background: "#111", padding: 10 }}>
+          OC: {oc}
+        </div>
+        <div style={{ flex: 1, background: "#111", padding: 10 }}>
+          OBC: {obc}
         </div>
       </div>
 
-      <div
-        style={{
-          display: "flex",
-          gap: "20px",
-          marginBottom: "20px"
-        }}
-      >
-        <div
-          style={{
-            flex: 1,
-            background: "#111",
-            padding: "20px",
-            borderRadius: "12px"
-          }}
-        >
-          <h3>OC BALANCE</h3>
-          <div style={{ fontSize: "32px", color: "#00aaff" }}>
-            {oc}
-          </div>
-        </div>
-
-        <div
-          style={{
-            flex: 1,
-            background: "#111",
-            padding: "20px",
-            borderRadius: "12px"
-          }}
-        >
-          <h3>OBC BALANCE</h3>
-          <div style={{ fontSize: "32px", color: "#ffaa00" }}>
-            {obc}
-          </div>
-        </div>
-      </div>
-
-      <div
-        style={{
-          background: "#111",
-          padding: "20px",
-          borderRadius: "12px",
-          marginBottom: "20px"
-        }}
-      >
-        <h2>TRADE PANEL</h2>
-
+      {/* TRADE */}
+      <div style={{ marginTop: 20 }}>
         <input
           type="number"
           value={qty}
           onChange={(e) => setQty(Number(e.target.value))}
-          style={{
-            width: "100%",
-            padding: "12px",
-            marginBottom: "15px",
-            fontSize: "18px"
-          }}
         />
 
-        <div style={{ display: "flex", gap: "10px" }}>
-          <button
-            onClick={buy}
-            style={{
-              flex: 1,
-              padding: "15px",
-              background: "green",
-              color: "white",
-              border: "none",
-              fontSize: "18px",
-              borderRadius: "10px"
-            }}
-          >
+        <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+          <button onClick={() => trade("BUY")} style={{ flex: 1 }}>
             BUY
           </button>
-
-          <button
-            onClick={sell}
-            style={{
-              flex: 1,
-              padding: "15px",
-              background: "red",
-              color: "white",
-              border: "none",
-              fontSize: "18px",
-              borderRadius: "10px"
-            }}
-          >
+          <button onClick={() => trade("SELL")} style={{ flex: 1 }}>
             SELL
           </button>
         </div>
       </div>
 
-      <div
-        style={{
-          background: "#111",
-          padding: "20px",
-          borderRadius: "12px"
-        }}
-      >
-        <h2>TRADE LOG</h2>
-
-        {logs.map((log, index) => (
-          <div
-            key={index}
-            style={{
-              padding: "8px 0",
-              borderBottom: "1px solid #333"
-            }}
-          >
-            {log}
-          </div>
+      {/* LOGS */}
+      <div style={{ marginTop: 20 }}>
+        <h3>LOGS</h3>
+        {logs.map((l, i) => (
+          <div key={i}>{l}</div>
         ))}
       </div>
     </div>
