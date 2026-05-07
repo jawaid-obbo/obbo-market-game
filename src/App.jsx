@@ -1,7 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
-
-/* ---------------- SUPABASE ---------------- */
 
 const supabase = createClient(
   "https://vwgmzqujbrttrjtdapqh.supabase.co",
@@ -12,93 +10,85 @@ export default function App() {
   const userId = "000001";
 
   const [price, setPrice] = useState(0);
+  const [prevPrice, setPrevPrice] = useState(0);
   const [oc, setOc] = useState(0);
   const [obc, setObc] = useState(0);
   const [qty, setQty] = useState(1);
   const [logs, setLogs] = useState([]);
+  const [history, setHistory] = useState([]);
 
-  /* ---------------- STABLE AUTO UPDATE SYSTEM ---------------- */
+  const intervalRef = useRef(null);
+
+  /* ---------------- LIVE SYNC ---------------- */
 
   useEffect(() => {
-    let isActive = true;
+    let active = true;
 
     const fetchData = async () => {
       try {
-        // MARKET PRICE
         const { data: market } = await supabase
           .from("market_state")
           .select("current_price")
           .eq("id", 1)
           .single();
 
-        if (isActive && market) {
+        if (market && active) {
+          setPrevPrice((p) => {
+            setHistory((h) => {
+              const newHist = [...h, market.current_price].slice(-20);
+              return newHist;
+            });
+            return price;
+          });
+
           setPrice(market.current_price);
         }
 
-        // WALLET DATA
         const { data: wallet } = await supabase
           .from("wallets")
           .select("oc_balance, obc_balance, active")
           .eq("user_id", userId)
           .single();
 
-        if (isActive && wallet && wallet.active) {
+        if (wallet && active && wallet.active) {
           setOc(wallet.oc_balance);
           setObc(wallet.obc_balance);
         }
       } catch (err) {
-        console.log("FETCH ERROR:", err.message);
+        console.log(err.message);
       }
     };
 
-    // FIRST LOAD
     fetchData();
 
-    // 🔵 AUTO LOOP (NO REFRESH NEEDED)
-    const interval = setInterval(() => {
-      fetchData();
-    }, 5000); // 5 seconds (recommended stable)
+    intervalRef.current = setInterval(fetchData, 5000);
 
     return () => {
-      isActive = false;
-      clearInterval(interval);
+      active = false;
+      clearInterval(intervalRef.current);
     };
-  }, []);
+  }, [price]);
 
-  /* ---------------- TRADE FUNCTION ---------------- */
+  /* ---------------- TRADE ---------------- */
 
   const trade = async (type) => {
-    try {
-      const { data, error } = await supabase.functions.invoke(
-        "trade-execute",
-        {
-          body: {
-            user_id: userId,
-            type,
-            quantity: qty,
-          },
-        }
-      );
+    const { data } = await supabase.functions.invoke("trade-execute", {
+      body: { user_id: userId, type, quantity: qty },
+    });
 
-      if (error) {
-        alert(error.message);
-        return;
-      }
+    if (data) {
+      setPrice(data.price);
+      setOc(data.oc);
+      setObc(data.obc);
 
-      if (data) {
-        setPrice(data.price);
-        setOc(data.oc);
-        setObc(data.obc);
-
-        setLogs((prev) => [
-          `${type} ${qty} OBC @ ${data.price}`,
-          ...prev,
-        ]);
-      }
-    } catch (err) {
-      console.log("TRADE ERROR:", err.message);
+      setLogs((l) => [`${type} ${qty} @ ${data.price}`, ...l]);
     }
   };
+
+  /* ---------------- UI ANIMATION ---------------- */
+
+  const isUp = price > prevPrice;
+  const isDown = price < prevPrice;
 
   /* ---------------- UI ---------------- */
 
@@ -108,58 +98,74 @@ export default function App() {
         minHeight: "100vh",
         background: "#050505",
         color: "white",
-        fontFamily: "Arial",
         display: "flex",
+        fontFamily: "Arial",
       }}
     >
-      {/* LEFT */}
-      <div style={{ width: "25%", background: "#111", padding: 20 }}>
-        <h2>ACCOUNT</h2>
+      {/* LEFT PANEL */}
+      <div style={{ width: "22%", background: "#111", padding: 15 }}>
+        <h3>ACCOUNT</h3>
+        <p>OC: {oc}</p>
+        <p>OBC: {obc}</p>
+        <p>ID: {userId}</p>
 
-        <p>OC</p>
-        <h2 style={{ color: "green" }}>{oc}</h2>
+        <hr />
 
-        <p>OBC</p>
-        <h2 style={{ color: "orange" }}>{obc}</h2>
-
-        <p>ID</p>
-        <h4>{userId}</h4>
+        <h4>HISTORY</h4>
+        <div style={{ fontSize: 12 }}>
+          {history.slice(-5).map((p, i) => (
+            <div key={i}>{p}</div>
+          ))}
+        </div>
       </div>
 
-      {/* CENTER */}
+      {/* CENTER (COIN WORLD) */}
       <div
         style={{
           flex: 1,
           display: "flex",
           flexDirection: "column",
-          justifyContent: "center",
           alignItems: "center",
+          justifyContent: "center",
         }}
       >
+        {/* OBBO COIN */}
         <div
           style={{
-            width: 200,
-            height: 200,
+            width: 220,
+            height: 220,
             borderRadius: "50%",
             background: "gold",
-            color: "black",
-            fontSize: 40,
-            fontWeight: "bold",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            boxShadow: "0 0 40px gold",
+            fontSize: 42,
+            fontWeight: "bold",
+            color: "black",
+            boxShadow: isUp
+              ? "0 0 40px lime"
+              : isDown
+              ? "0 0 40px red"
+              : "0 0 40px gold",
+            transform: isUp
+              ? "scale(1.05)"
+              : isDown
+              ? "scale(0.98)"
+              : "scale(1)",
+            transition: "all 0.3s ease",
           }}
         >
           🅱 {price}
         </div>
 
-        <p style={{ opacity: 0.5 }}>OBBO LIVE MARKET</p>
+        <p style={{ opacity: 0.6 }}>
+          {isUp ? "🟢 UP" : isDown ? "🔴 DOWN" : "⚪ STABLE"}
+        </p>
       </div>
 
-      {/* RIGHT */}
-      <div style={{ width: "30%", background: "#111", padding: 20 }}>
-        <h2>TRADE</h2>
+      {/* RIGHT PANEL */}
+      <div style={{ width: "28%", background: "#111", padding: 15 }}>
+        <h3>TRADE</h3>
 
         <input
           type="number"
@@ -170,24 +176,26 @@ export default function App() {
 
         <button
           onClick={() => trade("BUY")}
-          style={{ width: "50%", padding: 10, background: "green" }}
+          style={{ width: "50%", background: "green", padding: 10 }}
         >
           BUY
         </button>
 
         <button
           onClick={() => trade("SELL")}
-          style={{ width: "50%", padding: 10, background: "red" }}
+          style={{ width: "50%", background: "red", padding: 10 }}
         >
           SELL
         </button>
 
-        <div style={{ marginTop: 20 }}>
-          <h3>LOGS</h3>
-          {logs.map((l, i) => (
-            <div key={i}>{l}</div>
-          ))}
-        </div>
+        <hr />
+
+        <h4>LOGS</h4>
+        {logs.map((l, i) => (
+          <div key={i} style={{ fontSize: 12 }}>
+            {l}
+          </div>
+        ))}
       </div>
     </div>
   );
