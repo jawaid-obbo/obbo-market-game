@@ -17,50 +17,50 @@ export default function App() {
   const [qty, setQty] = useState(1);
   const [logs, setLogs] = useState([]);
 
-  /* ---------------- AUTO LOADER (FREE TIER SAFE) ---------------- */
+  /* ---------------- STABLE AUTO UPDATE SYSTEM ---------------- */
 
   useEffect(() => {
-    let isMounted = true;
+    let isActive = true;
 
-    const loadData = async () => {
+    const fetchData = async () => {
       try {
-        // MARKET DATA
+        // MARKET PRICE
         const { data: market } = await supabase
           .from("market_state")
-          .select("*")
+          .select("current_price")
           .eq("id", 1)
           .single();
 
-        if (market && isMounted) {
-          setPrice(market.current_price || 0);
+        if (isActive && market) {
+          setPrice(market.current_price);
         }
 
         // WALLET DATA
         const { data: wallet } = await supabase
           .from("wallets")
-          .select("*")
+          .select("oc_balance, obc_balance, active")
           .eq("user_id", userId)
           .single();
 
-        if (wallet && isMounted && wallet.active) {
-          setOc(wallet.oc_balance || 0);
-          setObc(wallet.obc_balance || 0);
+        if (isActive && wallet && wallet.active) {
+          setOc(wallet.oc_balance);
+          setObc(wallet.obc_balance);
         }
       } catch (err) {
-        console.log("LOAD ERROR:", err.message);
+        console.log("FETCH ERROR:", err.message);
       }
     };
 
-    // first load
-    loadData();
+    // FIRST LOAD
+    fetchData();
 
-    // 🔵 polling loop (NO refresh needed)
+    // 🔵 AUTO LOOP (NO REFRESH NEEDED)
     const interval = setInterval(() => {
-      loadData();
-    }, 4000); // every 4 seconds
+      fetchData();
+    }, 5000); // 5 seconds (recommended stable)
 
     return () => {
-      isMounted = false;
+      isActive = false;
       clearInterval(interval);
     };
   }, []);
@@ -86,9 +86,9 @@ export default function App() {
       }
 
       if (data) {
+        setPrice(data.price);
         setOc(data.oc);
         setObc(data.obc);
-        setPrice(data.price);
 
         setLogs((prev) => [
           `${type} ${qty} OBC @ ${data.price}`,
@@ -112,106 +112,72 @@ export default function App() {
         display: "flex",
       }}
     >
-      {/* LEFT PANEL */}
-      <div
-        style={{
-          width: "25%",
-          background: "#111",
-          padding: 20,
-        }}
-      >
+      {/* LEFT */}
+      <div style={{ width: "25%", background: "#111", padding: 20 }}>
         <h2>ACCOUNT</h2>
 
-        <div style={{ marginTop: 20 }}>
-          <p>OC BALANCE</p>
-          <h2 style={{ color: "#00ff99" }}>{oc}</h2>
-        </div>
+        <p>OC</p>
+        <h2 style={{ color: "green" }}>{oc}</h2>
 
-        <div>
-          <p>OBC BALANCE</p>
-          <h2 style={{ color: "#ffaa00" }}>{obc}</h2>
-        </div>
+        <p>OBC</p>
+        <h2 style={{ color: "orange" }}>{obc}</h2>
 
-        <div style={{ marginTop: 20 }}>
-          <p>USER ID</p>
-          <h4>{userId}</h4>
-        </div>
+        <p>ID</p>
+        <h4>{userId}</h4>
       </div>
 
-      {/* CENTER PANEL */}
+      {/* CENTER */}
       <div
         style={{
           flex: 1,
           display: "flex",
           flexDirection: "column",
-          alignItems: "center",
           justifyContent: "center",
+          alignItems: "center",
         }}
       >
         <div
           style={{
-            width: 220,
-            height: 220,
+            width: 200,
+            height: 200,
             borderRadius: "50%",
             background: "gold",
+            color: "black",
+            fontSize: 40,
+            fontWeight: "bold",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            fontSize: 40,
-            color: "black",
-            fontWeight: "bold",
             boxShadow: "0 0 40px gold",
           }}
         >
           🅱 {price}
         </div>
 
-        <p style={{ opacity: 0.5, marginTop: 10 }}>
-          OBBO LIVE MARKET
-        </p>
+        <p style={{ opacity: 0.5 }}>OBBO LIVE MARKET</p>
       </div>
 
-      {/* RIGHT PANEL */}
-      <div
-        style={{
-          width: "30%",
-          background: "#111",
-          padding: 20,
-        }}
-      >
-        <h2>TRADE PANEL</h2>
+      {/* RIGHT */}
+      <div style={{ width: "30%", background: "#111", padding: 20 }}>
+        <h2>TRADE</h2>
 
         <input
           type="number"
           value={qty}
           onChange={(e) => setQty(Number(e.target.value))}
-          style={{
-            width: "100%",
-            padding: 10,
-            marginBottom: 10,
-          }}
+          style={{ width: "100%", padding: 10 }}
         />
 
         <button
           onClick={() => trade("BUY")}
-          style={{
-            width: "50%",
-            padding: 10,
-            background: "green",
-            color: "white",
-          }}
+          style={{ width: "50%", padding: 10, background: "green" }}
         >
           BUY
         </button>
 
         <button
           onClick={() => trade("SELL")}
-          style={{
-            width: "50%",
-            padding: 10,
-            background: "red",
-            color: "white",
-          }}
+          style={{ width: "50%", padding: 10, background: "red" }}
         >
           SELL
         </button>
@@ -219,5 +185,10 @@ export default function App() {
         <div style={{ marginTop: 20 }}>
           <h3>LOGS</h3>
           {logs.map((l, i) => (
-            <div key={i} style={{ fontSize: 12 }}>
-              {l}
+            <div key={i}>{l}</div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
