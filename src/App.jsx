@@ -9,54 +9,100 @@ const supabase = createClient(
 );
 
 export default function App() {
+  const userId = "000001";
+
   const [price, setPrice] = useState(0);
   const [oc, setOc] = useState(0);
   const [obc, setObc] = useState(0);
   const [qty, setQty] = useState(1);
   const [logs, setLogs] = useState([]);
 
-  // test account for now
-  const userId = "000001";
+  /* ---------------- INITIAL LOAD ---------------- */
 
-  /* ---------------- LOAD DATA ---------------- */
-
-  const loadData = async () => {
+  const loadInitialData = async () => {
     try {
-      // MARKET PRICE
+      // MARKET
       const { data: market } = await supabase
         .from("market_state")
-        .select("current_price")
+        .select("*")
         .eq("id", 1)
         .single();
 
-      if (market && market.current_price != null) {
-        setPrice(market.current_price);
+      if (market) {
+        setPrice(market.current_price || 0);
       }
 
-      // USER WALLET
+      // WALLET
       const { data: wallet } = await supabase
         .from("wallets")
         .select("*")
         .eq("user_id", userId)
         .single();
 
-      if (wallet && wallet.active === true) {
+      if (wallet && wallet.active) {
         setOc(wallet.oc_balance || 0);
         setObc(wallet.obc_balance || 0);
       }
     } catch (err) {
-      console.log("LOAD ERROR:", err.message);
+      console.log("INIT ERROR:", err.message);
     }
   };
 
+  /* ---------------- REALTIME SUBSCRIPTIONS ---------------- */
+
   useEffect(() => {
-    loadData();
+    loadInitialData();
 
-    const interval = setInterval(() => {
-      loadData();
-    }, 2000);
+    // 🔴 REALTIME MARKET LISTENER
+    const marketChannel = supabase
+      .channel("market_live")
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "market_state",
+        },
+        (payload) => {
+          const m = payload.new;
+          if (m) {
+            setPrice(m.current_price);
 
-    return () => clearInterval(interval);
+            // optional log for debug/game feel
+            setLogs((prev) => [
+              `Price updated → ${m.current_price}`,
+              ...prev,
+            ]);
+          }
+        }
+      )
+      .subscribe();
+
+    // 🔵 REALTIME WALLET LISTENER
+    const walletChannel = supabase
+      .channel("wallet_live")
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "wallets",
+          filter: `user_id=eq.${userId}`,
+        },
+        (payload) => {
+          const w = payload.new;
+          if (w) {
+            setOc(w.oc_balance);
+            setObc(w.obc_balance);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(marketChannel);
+      supabase.removeChannel(walletChannel);
+    };
   }, []);
 
   /* ---------------- TRADE ---------------- */
@@ -68,7 +114,7 @@ export default function App() {
         {
           body: {
             user_id: userId,
-            type: type,
+            type,
             quantity: qty,
           },
         }
@@ -80,9 +126,9 @@ export default function App() {
       }
 
       if (data) {
-        setOc(data.oc || 0);
-        setObc(data.obc || 0);
-        setPrice(data.price || 0);
+        setOc(data.oc);
+        setObc(data.obc);
+        setPrice(data.price);
 
         setLogs((prev) => [
           `${type} ${qty} OBC @ ${data.price}`,
@@ -106,235 +152,64 @@ export default function App() {
       }}
     >
       {/* HEADER */}
-      <div
-        style={{
-          padding: "20px",
-          textAlign: "center",
-          borderBottom: "1px solid #222",
-        }}
-      >
-        <h1 style={{ margin: 0, fontSize: "42px" }}>
-          OBBO MARKET GAME
-        </h1>
+      <div style={{ padding: 20, textAlign: "center" }}>
+        <h1>OBBO MARKET GAME</h1>
       </div>
 
-      {/* MAIN AREA */}
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          padding: "20px",
-          gap: "20px",
-        }}
-      >
-        {/* LEFT PANEL */}
-        <div
-          style={{
-            flex: "1",
-            minWidth: "280px",
-            background: "#111",
-            borderRadius: "16px",
-            padding: "20px",
-          }}
-        >
+      {/* MAIN */}
+      <div style={{ display: "flex", gap: 20, padding: 20 }}>
+
+        {/* LEFT */}
+        <div style={{ flex: 1, background: "#111", padding: 20 }}>
           <h2>LIVE PRICE</h2>
 
-          {/* COIN */}
           <div
             style={{
-              width: "180px",
-              height: "180px",
-              borderRadius: "50%",
-              background: "gold",
-              margin: "20px auto",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexDirection: "column",
-              color: "black",
-              fontWeight: "bold",
-              boxShadow: "0 0 30px gold",
+              fontSize: 60,
+              color: "gold",
+              textAlign: "center",
+              margin: 20,
             }}
           >
-            <div style={{ fontSize: "42px" }}>B</div>
-
-            <div style={{ fontSize: "28px" }}>
-              {price}
-            </div>
+            🪙 {price}
           </div>
 
-          {/* WALLET */}
-          <div
-            style={{
-              background: "#1a1a1a",
-              padding: "15px",
-              borderRadius: "12px",
-              marginTop: "20px",
-            }}
-          >
-            <h3>OC BALANCE</h3>
-            <div
-              style={{
-                fontSize: "32px",
-                color: "#00ff99",
-              }}
-            >
-              {oc}
-            </div>
-          </div>
-
-          <div
-            style={{
-              background: "#1a1a1a",
-              padding: "15px",
-              borderRadius: "12px",
-              marginTop: "15px",
-            }}
-          >
-            <h3>OBC BALANCE</h3>
-            <div
-              style={{
-                fontSize: "32px",
-                color: "#ffaa00",
-              }}
-            >
-              {obc}
-            </div>
-          </div>
+          <h3>OC: {oc}</h3>
+          <h3>OBC: {obc}</h3>
         </div>
 
-        {/* RIGHT PANEL */}
-        <div
-          style={{
-            flex: "2",
-            minWidth: "300px",
-            background: "#111",
-            borderRadius: "16px",
-            padding: "20px",
-          }}
-        >
-          <h2>MARKET CHART</h2>
+        {/* RIGHT */}
+        <div style={{ flex: 2, background: "#111", padding: 20 }}>
+          <h2>TRADE</h2>
 
-          {/* TEMP CHART PLACEHOLDER */}
-          <div
-            style={{
-              height: "220px",
-              background:
-                "linear-gradient(to top, #0f0 1%, transparent 1%)",
-              borderRadius: "12px",
-              marginBottom: "20px",
-            }}
-          ></div>
+          <input
+            type="number"
+            value={qty}
+            onChange={(e) => setQty(Number(e.target.value))}
+            style={{ padding: 10, width: "100%", marginBottom: 10 }}
+          />
 
-          {/* TRADE PANEL */}
-          <div
-            style={{
-              background: "#1a1a1a",
-              padding: "20px",
-              borderRadius: "12px",
-            }}
+          <button
+            onClick={() => trade("BUY")}
+            style={{ padding: 10, width: "50%", background: "green" }}
           >
-            <h2>TRADE PANEL</h2>
+            BUY
+          </button>
 
-            <input
-              type="number"
-              value={qty}
-              onChange={(e) => setQty(Number(e.target.value))}
-              style={{
-                width: "100%",
-                padding: "14px",
-                fontSize: "18px",
-                borderRadius: "10px",
-                marginBottom: "15px",
-              }}
-            />
-
-            <div style={{ display: "flex", gap: "10px" }}>
-              <button
-                onClick={() => trade("BUY")}
-                style={{
-                  flex: 1,
-                  padding: "16px",
-                  background: "green",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "10px",
-                  fontSize: "18px",
-                }}
-              >
-                BUY
-              </button>
-
-              <button
-                onClick={() => trade("SELL")}
-                style={{
-                  flex: 1,
-                  padding: "16px",
-                  background: "red",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "10px",
-                  fontSize: "18px",
-                }}
-              >
-                SELL
-              </button>
-            </div>
-          </div>
-
-          {/* LOGS */}
-          <div
-            style={{
-              marginTop: "20px",
-              background: "#1a1a1a",
-              padding: "15px",
-              borderRadius: "12px",
-            }}
+          <button
+            onClick={() => trade("SELL")}
+            style={{ padding: 10, width: "50%", background: "red" }}
           >
-            <h3>TRADE LOGS</h3>
+            SELL
+          </button>
 
-            {logs.map((log, i) => (
-              <div
-                key={i}
-                style={{
-                  borderBottom: "1px solid #333",
-                  padding: "6px 0",
-                }}
-              >
-                {log}
-              </div>
+          <div style={{ marginTop: 20 }}>
+            <h3>LOGS</h3>
+            {logs.map((l, i) => (
+              <div key={i}>{l}</div>
             ))}
           </div>
         </div>
-      </div>
-
-      {/* WARNING BAR */}
-      <div
-        style={{
-          background: "yellow",
-          color: "red",
-          padding: "12px",
-          textAlign: "center",
-          fontWeight: "bold",
-        }}
-      >
-        Warning ⚠️ OBBO company is not responsible for any loss
-        you make in trading so kindly trade on your own risk
-      </div>
-
-      {/* GUARANTEE BAR */}
-      <div
-        style={{
-          background: "green",
-          color: "white",
-          padding: "12px",
-          textAlign: "center",
-          fontWeight: "bold",
-        }}
-      >
-        OBBO company is obliged to pay against all your OC you
-        own at the time of withdrawal with fixed rate OC 1 =
-        PKR 1 basis
       </div>
     </div>
   );
