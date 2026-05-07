@@ -9,11 +9,14 @@ const supabase = createClient(
 export default function App() {
   const userId = "000001";
 
+  const [view, setView] = useState("dashboard");
+
   const [price, setPrice] = useState(0);
   const [prevPrice, setPrevPrice] = useState(0);
 
   const [oc, setOc] = useState(0);
   const [obc, setObc] = useState(0);
+
   const [qty, setQty] = useState(1);
 
   const [history, setHistory] = useState([]);
@@ -38,10 +41,9 @@ export default function App() {
           setPrevPrice(price);
           setPrice(market.current_price);
 
-          setHistory((h) => {
-            const updated = [...h, market.current_price].slice(-20);
-            return updated;
-          });
+          setHistory((h) =>
+            [...h, market.current_price].slice(-30)
+          );
         }
 
         const { data: wallet } = await supabase
@@ -60,7 +62,6 @@ export default function App() {
     };
 
     load();
-
     intervalRef.current = setInterval(load, 5000);
 
     return () => {
@@ -88,102 +89,147 @@ export default function App() {
   const isUp = price > prevPrice;
   const isDown = price < prevPrice;
 
-  /* ---------------- UI ---------------- */
+  /* ---------------- NAV ---------------- */
+
+  const Nav = () => (
+    <div style={{ width: "22%", background: "#111", padding: 15 }}>
+      <h2>OBBO</h2>
+
+      <p>ID: {userId}</p>
+      <p>OC: {oc}</p>
+      <p>OBC: {obc}</p>
+
+      <hr />
+
+      <button onClick={() => setView("dashboard")}>Dashboard</button>
+      <button onClick={() => setView("bank")}>Bank</button>
+      <button onClick={() => setView("history")}>History</button>
+      <button onClick={() => setView("support")}>Support</button>
+    </div>
+  );
+
+  /* ---------------- DASHBOARD ---------------- */
+
+  const Dashboard = () => (
+    <div style={{ flex: 1, textAlign: "center", paddingTop: 60 }}>
+      
+      <div style={{ background: "red", padding: 5, fontSize: 12 }}>
+        ⚠ OBBO is not responsible for trading loss
+      </div>
+
+      <div
+        style={{
+          margin: "40px auto",
+          width: 220,
+          height: 220,
+          borderRadius: "50%",
+          background: "gold",
+          color: "black",
+          fontSize: 40,
+          fontWeight: "bold",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          boxShadow: isUp
+            ? "0 0 40px lime"
+            : isDown
+            ? "0 0 40px red"
+            : "0 0 30px gold",
+          transform: isUp
+            ? "scale(1.05)"
+            : isDown
+            ? "scale(0.98)"
+            : "scale(1)",
+          transition: "0.3s",
+        }}
+      >
+        🅱 {price}
+      </div>
+
+      <p>{isUp ? "🟢 UP" : isDown ? "🔴 DOWN" : "⚪ STABLE"}</p>
+
+      <div>
+        HISTORY:
+        {history.slice(-10).map((h, i) => (
+          <span key={i} style={{ marginLeft: 5 }}>{h}</span>
+        ))}
+      </div>
+    </div>
+  );
+
+  /* ---------------- BANK ---------------- */
+
+  const Bank = () => (
+    <div style={{ flex: 1, padding: 20 }}>
+      <h2>BANK</h2>
+      <p>Deposit (coming soon)</p>
+      <p>Withdraw (coming soon)</p>
+      <p>OC: {oc}</p>
+      <p>OBC: {obc}</p>
+    </div>
+  );
+
+  /* ---------------- HISTORY ---------------- */
+
+  const History = () => (
+    <div style={{ flex: 1, padding: 20 }}>
+      <h2>FULL HISTORY</h2>
+      {history.map((h, i) => (
+        <div key={i}>{h}</div>
+      ))}
+    </div>
+  );
+
+  /* ---------------- SUPPORT ---------------- */
+
+  const Support = () => (
+    <div style={{ flex: 1, padding: 20 }}>
+      <h2>SUPPORT</h2>
+      <p>Send message (UI only)</p>
+      <textarea style={{ width: "100%", height: 100 }} />
+    </div>
+  );
+
+  /* ---------------- TRADE PANEL ---------------- */
+
+  const Trade = () => (
+    <div style={{ width: "25%", background: "#111", padding: 15 }}>
+      <h2>TRADE</h2>
+
+      <input
+        type="number"
+        value={qty}
+        onChange={(e) => setQty(Number(e.target.value))}
+        style={{ width: "100%", padding: 10 }}
+      />
+
+      <button onClick={() => trade("BUY")} style={{ width: "50%", background: "green" }}>
+        BUY
+      </button>
+
+      <button onClick={() => trade("SELL")} style={{ width: "50%", background: "red" }}>
+        SELL
+      </button>
+
+      <h3>LOGS</h3>
+      {logs.map((l, i) => (
+        <div key={i} style={{ fontSize: 12 }}>{l}</div>
+      ))}
+    </div>
+  );
+
+  /* ---------------- MAIN RENDER ---------------- */
 
   return (
     <div style={{ display: "flex", height: "100vh", background: "#0b0b0b", color: "white" }}>
+      <Nav />
 
-      {/* LEFT SIDEBAR */}
-      <div style={{ width: "22%", background: "#111", padding: 15 }}>
-        <h2>OBBO USER</h2>
+      {view === "dashboard" && <Dashboard />}
+      {view === "bank" && <Bank />}
+      {view === "history" && <History />}
+      {view === "support" && <Support />}
 
-        <p>ID: {userId}</p>
-
-        <hr />
-
-        <p>OC: {oc}</p>
-        <p>OBC: {obc}</p>
-
-        <hr />
-
-        <h3>MENU</h3>
-        <p>Dashboard</p>
-        <p>Bank</p>
-        <p>History</p>
-        <p>Support</p>
-      </div>
-
-      {/* CENTER GAME AREA */}
-      <div style={{ flex: 1, textAlign: "center", paddingTop: 60 }}>
-
-        {/* WARNING BAR */}
-        <div style={{ background: "red", padding: 5, fontSize: 12 }}>
-          ⚠ OBBO is not responsible for trading loss
-        </div>
-
-        {/* COIN */}
-        <div
-          style={{
-            margin: "40px auto",
-            width: 220,
-            height: 220,
-            borderRadius: "50%",
-            background: "gold",
-            color: "black",
-            fontSize: 40,
-            fontWeight: "bold",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            boxShadow: isUp ? "0 0 40px lime" : isDown ? "0 0 40px red" : "0 0 30px gold",
-            transform: isUp ? "scale(1.05)" : isDown ? "scale(0.98)" : "scale(1)",
-            transition: "all 0.3s",
-          }}
-        >
-          🅱 {price}
-        </div>
-
-        <p>{isUp ? "🟢 UP" : isDown ? "🔴 DOWN" : "⚪ STABLE"}</p>
-
-        {/* HISTORY */}
-        <div style={{ marginTop: 20 }}>
-          <h4>HISTORY</h4>
-          {history.map((h, i) => (
-            <span key={i} style={{ marginRight: 5 }}>{h}</span>
-          ))}
-        </div>
-
-        {/* GUARANTEE BAR */}
-        <div style={{ background: "green", padding: 5, marginTop: 20, fontSize: 12 }}>
-          OBBO guarantees OC 1 = PKR 1 at withdrawal
-        </div>
-      </div>
-
-      {/* RIGHT PANEL */}
-      <div style={{ width: "25%", background: "#111", padding: 15 }}>
-        <h2>TRADE</h2>
-
-        <input
-          type="number"
-          value={qty}
-          onChange={(e) => setQty(Number(e.target.value))}
-          style={{ width: "100%", padding: 10 }}
-        />
-
-        <button onClick={() => trade("BUY")} style={{ width: "50%", background: "green" }}>
-          BUY
-        </button>
-
-        <button onClick={() => trade("SELL")} style={{ width: "50%", background: "red" }}>
-          SELL
-        </button>
-
-        <h3>LOGS</h3>
-        {logs.map((l, i) => (
-          <div key={i} style={{ fontSize: 12 }}>{l}</div>
-        ))}
-      </div>
-
+      <Trade />
     </div>
   );
 }
