@@ -19,7 +19,7 @@ export default function App() {
 
   /* ---------------- INITIAL LOAD ---------------- */
 
-  const loadInitialData = async () => {
+  const loadInitial = async () => {
     try {
       // MARKET
       const { data: market } = await supabase
@@ -48,29 +48,28 @@ export default function App() {
     }
   };
 
-  /* ---------------- REALTIME SUBSCRIPTIONS ---------------- */
+  /* ---------------- REAL-TIME SYSTEM ---------------- */
 
   useEffect(() => {
-    loadInitialData();
+    loadInitial();
 
-    // 🔴 REALTIME MARKET LISTENER
+    // 🔴 MARKET LIVE LISTENER
     const marketChannel = supabase
-      .channel("market_live")
+      .channel("market-live")
       .on(
         "postgres_changes",
         {
-          event: "UPDATE",
+          event: "*",
           schema: "public",
           table: "market_state",
         },
         (payload) => {
           const m = payload.new;
-          if (m) {
+          if (m?.current_price !== undefined) {
             setPrice(m.current_price);
 
-            // optional log for debug/game feel
             setLogs((prev) => [
-              `Price updated → ${m.current_price}`,
+              `Price → ${m.current_price}`,
               ...prev,
             ]);
           }
@@ -78,13 +77,13 @@ export default function App() {
       )
       .subscribe();
 
-    // 🔵 REALTIME WALLET LISTENER
+    // 🔵 WALLET LIVE LISTENER
     const walletChannel = supabase
-      .channel("wallet_live")
+      .channel("wallet-live")
       .on(
         "postgres_changes",
         {
-          event: "UPDATE",
+          event: "*",
           schema: "public",
           table: "wallets",
           filter: `user_id=eq.${userId}`,
@@ -149,66 +148,78 @@ export default function App() {
         background: "#050505",
         color: "white",
         fontFamily: "Arial",
+        display: "flex",
       }}
     >
-      {/* HEADER */}
-      <div style={{ padding: 20, textAlign: "center" }}>
-        <h1>OBBO MARKET GAME</h1>
-      </div>
+      {/* LEFT PANEL */}
+      <div
+        style={{
+          width: "30%",
+          background: "#111",
+          padding: 20,
+        }}
+      >
+        <h2>OBBO PRICE</h2>
 
-      {/* MAIN */}
-      <div style={{ display: "flex", gap: 20, padding: 20 }}>
-
-        {/* LEFT */}
-        <div style={{ flex: 1, background: "#111", padding: 20 }}>
-          <h2>LIVE PRICE</h2>
-
-          <div
-            style={{
-              fontSize: 60,
-              color: "gold",
-              textAlign: "center",
-              margin: 20,
-            }}
-          >
-            🪙 {price}
-          </div>
-
-          <h3>OC: {oc}</h3>
-          <h3>OBC: {obc}</h3>
+        <div
+          style={{
+            fontSize: 60,
+            color: "gold",
+            textAlign: "center",
+            margin: 20,
+          }}
+        >
+          🪙 {price}
         </div>
 
-        {/* RIGHT */}
-        <div style={{ flex: 2, background: "#111", padding: 20 }}>
-          <h2>TRADE</h2>
+        <h3>OC: {oc}</h3>
+        <h3>OBC: {obc}</h3>
+      </div>
 
-          <input
-            type="number"
-            value={qty}
-            onChange={(e) => setQty(Number(e.target.value))}
-            style={{ padding: 10, width: "100%", marginBottom: 10 }}
-          />
+      {/* RIGHT PANEL */}
+      <div style={{ flex: 1, padding: 20 }}>
+        <h2>TRADE PANEL</h2>
 
-          <button
-            onClick={() => trade("BUY")}
-            style={{ padding: 10, width: "50%", background: "green" }}
-          >
-            BUY
-          </button>
+        <input
+          type="number"
+          value={qty}
+          onChange={(e) => setQty(Number(e.target.value))}
+          style={{
+            padding: 10,
+            width: "100%",
+            marginBottom: 10,
+          }}
+        />
 
-          <button
-            onClick={() => trade("SELL")}
-            style={{ padding: 10, width: "50%", background: "red" }}
-          >
-            SELL
-          </button>
+        <button
+          onClick={() => trade("BUY")}
+          style={{
+            padding: 10,
+            width: "50%",
+            background: "green",
+            color: "white",
+          }}
+        >
+          BUY
+        </button>
 
-          <div style={{ marginTop: 20 }}>
-            <h3>LOGS</h3>
-            {logs.map((l, i) => (
-              <div key={i}>{l}</div>
-            ))}
-          </div>
+        <button
+          onClick={() => trade("SELL")}
+          style={{
+            padding: 10,
+            width: "50%",
+            background: "red",
+            color: "white",
+          }}
+        >
+          SELL
+        </button>
+
+        <div style={{ marginTop: 20 }}>
+          <h3>LOGS</h3>
+          {logs.map((l, i) => (
+            <div key={i}>{l}</div>
+          ))}
         </div>
       </div>
     </div>
