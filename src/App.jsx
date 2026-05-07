@@ -21,7 +21,7 @@ export default function App() {
 
   const loadInitial = async () => {
     try {
-      // MARKET
+      // MARKET DATA
       const { data: market } = await supabase
         .from("market_state")
         .select("*")
@@ -32,7 +32,7 @@ export default function App() {
         setPrice(market.current_price || 0);
       }
 
-      // WALLET
+      // WALLET DATA
       const { data: wallet } = await supabase
         .from("wallets")
         .select("*")
@@ -48,18 +48,18 @@ export default function App() {
     }
   };
 
-  /* ---------------- REAL-TIME SYSTEM ---------------- */
+  /* ---------------- REAL-TIME LISTENERS ---------------- */
 
   useEffect(() => {
     loadInitial();
 
-    // 🔴 MARKET LIVE LISTENER
+    /* 🟢 MARKET REALTIME */
     const marketChannel = supabase
-      .channel("market-live")
+      .channel("obbo-market")
       .on(
         "postgres_changes",
         {
-          event: "*",
+          event: "UPDATE",
           schema: "public",
           table: "market_state",
         },
@@ -77,9 +77,9 @@ export default function App() {
       )
       .subscribe();
 
-    // 🔵 WALLET LIVE LISTENER
+    /* 🔵 WALLET REALTIME */
     const walletChannel = supabase
-      .channel("wallet-live")
+      .channel("obbo-wallet")
       .on(
         "postgres_changes",
         {
@@ -104,7 +104,7 @@ export default function App() {
     };
   }, []);
 
-  /* ---------------- TRADE ---------------- */
+  /* ---------------- TRADE FUNCTION ---------------- */
 
   const trade = async (type) => {
     try {
