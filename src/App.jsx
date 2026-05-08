@@ -10,17 +10,8 @@ const supabase = createClient(
 
 const MarketView = memo(({ price }) => {
   return (
-    <div
-      style={{
-        flex: 1,
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "#0b0b0b",
-      }}
-    >
-      <h2 style={{ letterSpacing: 2 }}>OBBO MARKET</h2>
+    <div style={{ flex: 1, display: "flex", justifyContent: "center", alignItems: "center", flexDirection: "column" }}>
+      <h2>OBBO MARKET</h2>
 
       <div
         style={{
@@ -35,20 +26,17 @@ const MarketView = memo(({ price }) => {
           alignItems: "center",
           justifyContent: "center",
           boxShadow: "0 0 30px rgba(255,215,0,0.5)",
-          transition: "0.3s",
         }}
       >
         {price}
       </div>
-
-      <p style={{ opacity: 0.7 }}>LIVE PRICE</p>
     </div>
   );
 });
 
-/* ---------------- SUPPORT CHAT ---------------- */
+/* ---------------- USER CHAT ---------------- */
 
-const SupportChat = ({ userId }) => {
+const UserChat = ({ userId }) => {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
 
@@ -64,79 +52,48 @@ const SupportChat = ({ userId }) => {
 
   useEffect(() => {
     load();
-    const i = setInterval(load, 1200); // ⚡ faster updates
+    const i = setInterval(load, 1200);
     return () => clearInterval(i);
   }, []);
 
   const send = async () => {
     if (!input.trim()) return;
 
-    // OPTIMISTIC UI (instant feel)
-    const temp = {
-      id: Date.now(),
-      user_id: userId,
-      sender: "user",
-      message: input,
-    };
-
-    setMessages((prev) => [...prev, temp]);
-    setInput("");
+    setMessages((p) => [
+      ...p,
+      { id: Date.now(), sender: "user", message: input }
+    ]);
 
     await supabase.from("support_chat").insert([
       {
         user_id: userId,
         sender: "user",
-        message: temp.message,
+        message: input,
       },
     ]);
+
+    setInput("");
   };
 
   return (
-    <div
-      style={{
-        flex: 1,
-        display: "flex",
-        flexDirection: "column",
-        padding: 20,
-        background: "#0b0b0b",
-      }}
-    >
-      <h2 style={{ letterSpacing: 2 }}>SUPPORT CHAT</h2>
+    <div style={{ flex: 1, padding: 20 }}>
+      <h2>SUPPORT</h2>
 
-      {/* CHAT BOX */}
-      <div
-        style={{
-          flex: 1,
-          overflowY: "auto",
-          background: "rgba(20,20,20,0.8)",
-          backdropFilter: "blur(10px)",
-          border: "1px solid rgba(255,255,255,0.08)",
-          borderRadius: 12,
-          padding: 12,
-          marginBottom: 10,
-        }}
-      >
+      <div style={{ height: 400, overflowY: "auto", background: "#111", padding: 10 }}>
         {messages.map((m) => (
           <div
             key={m.id}
-            style={{
-              textAlign: m.sender === "user" ? "right" : "left",
-              margin: "6px 0",
-            }}
+            style={{ textAlign: m.sender === "user" ? "right" : "left", margin: 5 }}
           >
             <span
               style={{
-                background:
-                  m.sender === "admin"
-                    ? "linear-gradient(135deg,#1f8b4c,#0f3d22)"
-                    : "linear-gradient(135deg,#2b6fff,#102a66)",
-                padding: "10px 12px",
-                borderRadius: 12,
+                background: m.sender === "admin"
+                  ? "linear-gradient(135deg,#1f8b4c,#0f3d22)"
+                  : "linear-gradient(135deg,#2b6fff,#102a66)",
+                padding: 10,
+                borderRadius: 10,
                 display: "inline-block",
                 color: "white",
-                fontSize: 14,
-                boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
-                maxWidth: "70%",
               }}
             >
               {m.message}
@@ -145,8 +102,7 @@ const SupportChat = ({ userId }) => {
         ))}
       </div>
 
-      {/* INPUT */}
-      <div style={{ display: "flex", gap: 10 }}>
+      <div style={{ display: "flex", marginTop: 10 }}>
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -156,31 +112,126 @@ const SupportChat = ({ userId }) => {
               send();
             }
           }}
-          placeholder="Type message..."
-          style={{
-            flex: 1,
-            padding: 12,
-            borderRadius: 10,
-            border: "1px solid rgba(255,255,255,0.1)",
-            background: "#111",
-            color: "white",
-            outline: "none",
-          }}
+          style={{ flex: 1, padding: 10 }}
+          placeholder="Type..."
         />
+        <button onClick={send}>SEND</button>
+      </div>
+    </div>
+  );
+};
 
-        <button
-          onClick={send}
-          style={{
-            padding: "12px 16px",
-            borderRadius: 10,
-            background: "linear-gradient(135deg,#2b6fff,#1a3fb8)",
-            color: "white",
-            border: "none",
-            cursor: "pointer",
-          }}
-        >
-          SEND
-        </button>
+/* ---------------- ADMIN PANEL ---------------- */
+
+const AdminPanel = () => {
+  const [users, setUsers] = useState([]);
+  const [activeUser, setActiveUser] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [reply, setReply] = useState("");
+
+  const loadUsers = async () => {
+    const { data } = await supabase.from("support_chat").select("user_id");
+    if (data) {
+      const unique = [...new Set(data.map((u) => u.user_id))];
+      setUsers(unique);
+    }
+  };
+
+  const loadChat = async (uid) => {
+    const { data } = await supabase
+      .from("support_chat")
+      .select("*")
+      .eq("user_id", uid)
+      .order("created_at", { ascending: true });
+
+    if (data) setMessages(data);
+  };
+
+  useEffect(() => {
+    loadUsers();
+  }, []);
+
+  const sendReply = async () => {
+    if (!reply.trim() || !activeUser) return;
+
+    setMessages((p) => [
+      ...p,
+      { id: Date.now(), sender: "admin", message: reply }
+    ]);
+
+    await supabase.from("support_chat").insert([
+      {
+        user_id: activeUser,
+        sender: "admin",
+        message: reply,
+      },
+    ]);
+
+    setReply("");
+  };
+
+  return (
+    <div style={{ display: "flex", flex: 1 }}>
+      {/* USERS */}
+      <div style={{ width: 200, background: "#111", padding: 10 }}>
+        <h3>USERS</h3>
+
+        {users.map((u) => (
+          <button
+            key={u}
+            onClick={() => {
+              setActiveUser(u);
+              loadChat(u);
+            }}
+            style={{ display: "block", margin: 5 }}
+          >
+            {u}
+          </button>
+        ))}
+      </div>
+
+      {/* CHAT */}
+      <div style={{ flex: 1, padding: 20 }}>
+        <h3>ADMIN CHAT</h3>
+
+        <div style={{ height: 400, overflowY: "auto", background: "#111", padding: 10 }}>
+          {messages.map((m) => (
+            <div
+              key={m.id}
+              style={{ textAlign: m.sender === "admin" ? "left" : "right", margin: 5 }}
+            >
+              <span
+                style={{
+                  background: m.sender === "admin"
+                    ? "green"
+                    : "blue",
+                  padding: 10,
+                  borderRadius: 10,
+                  display: "inline-block",
+                  color: "white",
+                }}
+              >
+                {m.message}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: "flex", marginTop: 10 }}>
+          <input
+            value={reply}
+            onChange={(e) => setReply(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                sendReply();
+              }
+            }}
+            style={{ flex: 1, padding: 10 }}
+            placeholder="Reply..."
+          />
+          <button onClick={sendReply}>REPLY</button>
+        </div>
       </div>
     </div>
   );
@@ -192,11 +243,10 @@ export default function App() {
   const userId = "000001";
 
   const [view, setView] = useState("market");
+  const [adminMode, setAdminMode] = useState(false);
+
   const [price, setPrice] = useState(100);
 
-  const intervalRef = useRef(null);
-
-  /* MARKET ENGINE */
   useEffect(() => {
     const load = async () => {
       const { data } = await supabase
@@ -209,38 +259,31 @@ export default function App() {
     };
 
     load();
-    intervalRef.current = setInterval(load, 2000); // ⚡ faster market feel
-
-    return () => clearInterval(intervalRef.current);
+    const i = setInterval(load, 2000);
+    return () => clearInterval(i);
   }, []);
 
   return (
-    <div
-      style={{
-        display: "flex",
-        height: "100vh",
-        color: "white",
-        fontFamily: "Arial",
-      }}
-    >
+    <div style={{ display: "flex", height: "100vh", color: "white", background: "#0b0b0b" }}>
+      
       {/* SIDEBAR */}
-      <div
-        style={{
-          width: 200,
-          background: "#111",
-          padding: 10,
-          borderRight: "1px solid rgba(255,255,255,0.1)",
-        }}
-      >
+      <div style={{ width: 200, background: "#111", padding: 10 }}>
         <h3>OBBO</h3>
 
         <button onClick={() => setView("market")}>Market</button>
         <button onClick={() => setView("support")}>Support</button>
+
+        <hr />
+
+        <button onClick={() => setAdminMode(!adminMode)}>
+          {adminMode ? "Exit Admin" : "Admin Mode"}
+        </button>
       </div>
 
       {/* MAIN */}
-      {view === "market" && <MarketView price={price} />}
-      {view === "support" && <SupportChat userId={userId} />}
+      {!adminMode && view === "market" && <MarketView price={price} />}
+      {!adminMode && view === "support" && <UserChat userId={userId} />}
+      {adminMode && <AdminPanel />}
     </div>
   );
 }
