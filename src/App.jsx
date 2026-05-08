@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, memo } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -8,37 +8,69 @@ const supabase = createClient(
 
 /* ---------------- MARKET ---------------- */
 
-const MarketView = memo(({ price }) => {
+function Market() {
+  const [price, setPrice] = useState(100);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel("market-live")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "market_state" },
+        (payload) => {
+          setPrice(payload.new.current_price);
+        }
+      )
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
+  }, []);
+
   return (
     <div style={{ flex: 1, display: "flex", justifyContent: "center", alignItems: "center", flexDirection: "column" }}>
       <h2>OBBO MARKET</h2>
 
-      <div
-        style={{
-          width: 220,
-          height: 220,
-          borderRadius: "50%",
-          background: "radial-gradient(circle,#ffd700,#b8860b)",
-          color: "black",
-          fontSize: 42,
-          fontWeight: "bold",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          boxShadow: "0 0 30px rgba(255,215,0,0.5)",
-        }}
-      >
+      <div style={{
+        width: 220,
+        height: 220,
+        borderRadius: "50%",
+        background: "gold",
+        color: "black",
+        fontSize: 40,
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center"
+      }}>
         {price}
       </div>
     </div>
   );
-});
+}
 
 /* ---------------- USER CHAT ---------------- */
 
-const UserChat = ({ userId }) => {
+function UserChat({ userId }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
+
+  useEffect(() => {
+    load();
+
+    const channel = supabase
+      .channel("user-chat")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "support_chat" },
+        (payload) => {
+          if (payload.new.user_id === userId) {
+            setMessages((prev) => [...prev, payload.new]);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
+  }, []);
 
   const load = async () => {
     const { data } = await supabase
@@ -50,19 +82,8 @@ const UserChat = ({ userId }) => {
     if (data) setMessages(data);
   };
 
-  useEffect(() => {
-    load();
-    const i = setInterval(load, 1200);
-    return () => clearInterval(i);
-  }, []);
-
   const send = async () => {
     if (!input.trim()) return;
-
-    setMessages((p) => [
-      ...p,
-      { id: Date.now(), sender: "user", message: input }
-    ]);
 
     await supabase.from("support_chat").insert([
       {
@@ -81,53 +102,49 @@ const UserChat = ({ userId }) => {
 
       <div style={{ height: 400, overflowY: "auto", background: "#111", padding: 10 }}>
         {messages.map((m) => (
-          <div
-            key={m.id}
-            style={{ textAlign: m.sender === "user" ? "right" : "left", margin: 5 }}
-          >
-            <span
-              style={{
-                background: m.sender === "admin"
-                  ? "linear-gradient(135deg,#1f8b4c,#0f3d22)"
-                  : "linear-gradient(135deg,#2b6fff,#102a66)",
-                padding: 10,
-                borderRadius: 10,
-                display: "inline-block",
-                color: "white",
-              }}
-            >
+          <div key={m.id} style={{ textAlign: m.sender === "user" ? "right" : "left" }}>
+            <span style={{
+              background: m.sender === "user" ? "blue" : "green",
+              padding: 10,
+              borderRadius: 10,
+              display: "inline-block",
+              margin: 5,
+              color: "white"
+            }}>
               {m.message}
             </span>
           </div>
         ))}
       </div>
 
-      <div style={{ display: "flex", marginTop: 10 }}>
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              send();
-            }
-          }}
-          style={{ flex: 1, padding: 10 }}
-          placeholder="Type..."
-        />
-        <button onClick={send}>SEND</button>
-      </div>
+      <input
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            send();
+          }
+        }}
+        style={{ width: "80%", padding: 10 }}
+      />
+
+      <button onClick={send}>SEND</button>
     </div>
   );
-};
+}
 
-/* ---------------- ADMIN PANEL ---------------- */
+/* ---------------- ADMIN CHAT ---------------- */
 
-const AdminPanel = () => {
+function AdminPanel() {
   const [users, setUsers] = useState([]);
   const [activeUser, setActiveUser] = useState(null);
   const [messages, setMessages] = useState([]);
   const [reply, setReply] = useState("");
+
+  useEffect(() => {
+    loadUsers();
+  }, []);
 
   const loadUsers = async () => {
     const { data } = await supabase.from("support_chat").select("user_id");
@@ -137,7 +154,9 @@ const AdminPanel = () => {
     }
   };
 
-  const loadChat = async (uid) => {
+  const openChat = async (uid) => {
+    setActiveUser(uid);
+
     const { data } = await supabase
       .from("support_chat")
       .select("*")
@@ -145,19 +164,24 @@ const AdminPanel = () => {
       .order("created_at", { ascending: true });
 
     if (data) setMessages(data);
-  };
 
-  useEffect(() => {
-    loadUsers();
-  }, []);
+    // REAL-TIME LISTENER
+    supabase
+      .channel("admin-chat-" + uid)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "support_chat" },
+        (payload) => {
+          if (payload.new.user_id === uid) {
+            setMessages((prev) => [...prev, payload.new]);
+          }
+        }
+      )
+      .subscribe();
+  };
 
   const sendReply = async () => {
     if (!reply.trim() || !activeUser) return;
-
-    setMessages((p) => [
-      ...p,
-      { id: Date.now(), sender: "admin", message: reply }
-    ]);
 
     await supabase.from("support_chat").insert([
       {
@@ -172,101 +196,63 @@ const AdminPanel = () => {
 
   return (
     <div style={{ display: "flex", flex: 1 }}>
-      {/* USERS */}
       <div style={{ width: 200, background: "#111", padding: 10 }}>
         <h3>USERS</h3>
 
         {users.map((u) => (
-          <button
-            key={u}
-            onClick={() => {
-              setActiveUser(u);
-              loadChat(u);
-            }}
-            style={{ display: "block", margin: 5 }}
-          >
+          <button key={u} onClick={() => openChat(u)}>
             {u}
           </button>
         ))}
       </div>
 
-      {/* CHAT */}
       <div style={{ flex: 1, padding: 20 }}>
         <h3>ADMIN CHAT</h3>
 
         <div style={{ height: 400, overflowY: "auto", background: "#111", padding: 10 }}>
           {messages.map((m) => (
-            <div
-              key={m.id}
-              style={{ textAlign: m.sender === "admin" ? "left" : "right", margin: 5 }}
-            >
-              <span
-                style={{
-                  background: m.sender === "admin"
-                    ? "green"
-                    : "blue",
-                  padding: 10,
-                  borderRadius: 10,
-                  display: "inline-block",
-                  color: "white",
-                }}
-              >
+            <div key={m.id} style={{ textAlign: m.sender === "admin" ? "left" : "right" }}>
+              <span style={{
+                background: m.sender === "admin" ? "green" : "blue",
+                padding: 10,
+                borderRadius: 10,
+                display: "inline-block",
+                margin: 5,
+                color: "white"
+              }}>
                 {m.message}
               </span>
             </div>
           ))}
         </div>
 
-        <div style={{ display: "flex", marginTop: 10 }}>
-          <input
-            value={reply}
-            onChange={(e) => setReply(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                sendReply();
-              }
-            }}
-            style={{ flex: 1, padding: 10 }}
-            placeholder="Reply..."
-          />
-          <button onClick={sendReply}>REPLY</button>
-        </div>
+        <input
+          value={reply}
+          onChange={(e) => setReply(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              sendReply();
+            }
+          }}
+          style={{ width: "80%", padding: 10 }}
+        />
+
+        <button onClick={sendReply}>REPLY</button>
       </div>
     </div>
   );
-};
+}
 
-/* ---------------- MAIN APP ---------------- */
+/* ---------------- MAIN ---------------- */
 
 export default function App() {
-  const userId = "000001";
-
   const [view, setView] = useState("market");
-  const [adminMode, setAdminMode] = useState(false);
-
-  const [price, setPrice] = useState(100);
-
-  useEffect(() => {
-    const load = async () => {
-      const { data } = await supabase
-        .from("market_state")
-        .select("current_price")
-        .eq("id", 1)
-        .single();
-
-      if (data) setPrice(data.current_price);
-    };
-
-    load();
-    const i = setInterval(load, 2000);
-    return () => clearInterval(i);
-  }, []);
+  const [admin, setAdmin] = useState(false);
 
   return (
     <div style={{ display: "flex", height: "100vh", color: "white", background: "#0b0b0b" }}>
       
-      {/* SIDEBAR */}
       <div style={{ width: 200, background: "#111", padding: 10 }}>
         <h3>OBBO</h3>
 
@@ -275,15 +261,14 @@ export default function App() {
 
         <hr />
 
-        <button onClick={() => setAdminMode(!adminMode)}>
-          {adminMode ? "Exit Admin" : "Admin Mode"}
+        <button onClick={() => setAdmin(!admin)}>
+          {admin ? "Exit Admin" : "Admin Mode"}
         </button>
       </div>
 
-      {/* MAIN */}
-      {!adminMode && view === "market" && <MarketView price={price} />}
-      {!adminMode && view === "support" && <UserChat userId={userId} />}
-      {adminMode && <AdminPanel />}
+      {!admin && view === "market" && <Market />}
+      {!admin && view === "support" && <UserChat userId="000001" />}
+      {admin && <AdminPanel />}
     </div>
   );
 }
