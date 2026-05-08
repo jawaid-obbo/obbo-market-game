@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -52,12 +52,13 @@ function Market() {
 function UserChat({ userId }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
+  const inputRef = useRef("");
 
   useEffect(() => {
     load();
 
     const channel = supabase
-      .channel("user-chat")
+      .channel("user-chat-" + userId)
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "support_chat" },
@@ -83,17 +84,24 @@ function UserChat({ userId }) {
   };
 
   const send = async () => {
-    if (!input.trim()) return;
+    const msg = inputRef.current;
+    if (!msg || msg.trim() === "") return;
+
+    setMessages((p) => [
+      ...p,
+      { id: Date.now(), sender: "user", message: msg }
+    ]);
+
+    inputRef.current = "";
+    setInput("");
 
     await supabase.from("support_chat").insert([
       {
         user_id: userId,
         sender: "user",
-        message: input,
+        message: msg,
       },
     ]);
-
-    setInput("");
   };
 
   return (
@@ -104,7 +112,7 @@ function UserChat({ userId }) {
         {messages.map((m) => (
           <div key={m.id} style={{ textAlign: m.sender === "user" ? "right" : "left" }}>
             <span style={{
-              background: m.sender === "user" ? "blue" : "green",
+              background: m.sender === "user" ? "#2b6fff" : "#1f8b4c",
               padding: 10,
               borderRadius: 10,
               display: "inline-block",
@@ -119,7 +127,10 @@ function UserChat({ userId }) {
 
       <input
         value={input}
-        onChange={(e) => setInput(e.target.value)}
+        onChange={(e) => {
+          setInput(e.target.value);
+          inputRef.current = e.target.value;
+        }}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             e.preventDefault();
@@ -134,13 +145,14 @@ function UserChat({ userId }) {
   );
 }
 
-/* ---------------- ADMIN CHAT ---------------- */
+/* ---------------- ADMIN PANEL ---------------- */
 
 function AdminPanel() {
   const [users, setUsers] = useState([]);
   const [activeUser, setActiveUser] = useState(null);
   const [messages, setMessages] = useState([]);
   const [reply, setReply] = useState("");
+  const replyRef = useRef("");
 
   useEffect(() => {
     loadUsers();
@@ -165,8 +177,7 @@ function AdminPanel() {
 
     if (data) setMessages(data);
 
-    // REAL-TIME LISTENER
-    supabase
+    const channel = supabase
       .channel("admin-chat-" + uid)
       .on(
         "postgres_changes",
@@ -181,17 +192,24 @@ function AdminPanel() {
   };
 
   const sendReply = async () => {
-    if (!reply.trim() || !activeUser) return;
+    const msg = replyRef.current;
+    if (!msg || !activeUser) return;
+
+    setMessages((p) => [
+      ...p,
+      { id: Date.now(), sender: "admin", message: msg }
+    ]);
+
+    replyRef.current = "";
+    setReply("");
 
     await supabase.from("support_chat").insert([
       {
         user_id: activeUser,
         sender: "admin",
-        message: reply,
+        message: msg,
       },
     ]);
-
-    setReply("");
   };
 
   return (
@@ -213,7 +231,7 @@ function AdminPanel() {
           {messages.map((m) => (
             <div key={m.id} style={{ textAlign: m.sender === "admin" ? "left" : "right" }}>
               <span style={{
-                background: m.sender === "admin" ? "green" : "blue",
+                background: m.sender === "admin" ? "#1f8b4c" : "#2b6fff",
                 padding: 10,
                 borderRadius: 10,
                 display: "inline-block",
@@ -228,7 +246,10 @@ function AdminPanel() {
 
         <input
           value={reply}
-          onChange={(e) => setReply(e.target.value)}
+          onChange={(e) => {
+            setReply(e.target.value);
+            replyRef.current = e.target.value;
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
@@ -244,14 +265,14 @@ function AdminPanel() {
   );
 }
 
-/* ---------------- MAIN ---------------- */
+/* ---------------- MAIN APP ---------------- */
 
 export default function App() {
   const [view, setView] = useState("market");
   const [admin, setAdmin] = useState(false);
 
   return (
-    <div style={{ display: "flex", height: "100vh", color: "white", background: "#0b0b0b" }}>
+    <div style={{ display: "flex", height: "100vh", background: "#0b0b0b", color: "white" }}>
       
       <div style={{ width: 200, background: "#111", padding: 10 }}>
         <h3>OBBO</h3>
