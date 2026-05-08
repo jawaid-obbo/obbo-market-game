@@ -22,6 +22,9 @@ export default function App() {
   const [history, setHistory] = useState([]);
   const [logs, setLogs] = useState([]);
 
+  const [supportMessage, setSupportMessage] = useState("");
+  const [supportStatus, setSupportStatus] = useState("");
+
   const intervalRef = useRef(null);
 
   /* ---------------- LIVE ENGINE ---------------- */
@@ -62,6 +65,7 @@ export default function App() {
     };
 
     load();
+
     intervalRef.current = setInterval(load, 5000);
 
     return () => {
@@ -86,10 +90,36 @@ export default function App() {
     }
   };
 
+  /* ---------------- SUPPORT SEND ---------------- */
+
+  const sendSupportMessage = async () => {
+    if (!supportMessage.trim()) {
+      setSupportStatus("Please write a message");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("support_messages")
+      .insert([
+        {
+          user_id: userId,
+          message: supportMessage,
+        },
+      ]);
+
+    if (error) {
+      setSupportStatus("Error sending message");
+      console.log(error.message);
+    } else {
+      setSupportStatus("Message sent successfully");
+      setSupportMessage("");
+    }
+  };
+
   const isUp = price > prevPrice;
   const isDown = price < prevPrice;
 
-  /* ---------------- SIMPLE LINE CHART ---------------- */
+  /* ---------------- SIMPLE CHART ---------------- */
 
   const Chart = () => {
     if (history.length < 2) return <p>No chart data</p>;
@@ -106,8 +136,13 @@ export default function App() {
             const x1 = (i - 1) * (300 / history.length);
             const x2 = i * (300 / history.length);
 
-            const y1 = 100 - ((history[i - 1] - min) / (max - min || 1)) * 100;
-            const y2 = 100 - ((p - min) / (max - min || 1)) * 100;
+            const y1 =
+              100 -
+              ((history[i - 1] - min) / (max - min || 1)) * 100;
+
+            const y2 =
+              100 -
+              ((p - min) / (max - min || 1)) * 100;
 
             return (
               <line
@@ -149,9 +184,18 @@ export default function App() {
 
   const Market = () => (
     <div style={{ flex: 1, textAlign: "center", paddingTop: 40 }}>
-
       <div style={{ background: "red", padding: 5, fontSize: 12 }}>
         ⚠ OBBO not responsible for trading loss
+      </div>
+
+      <div
+        style={{
+          background: "green",
+          padding: 5,
+          fontSize: 12,
+        }}
+      >
+        OBBO COMPANY OBLIGED: OC 1 = PKR 1
       </div>
 
       <div
@@ -186,43 +230,72 @@ export default function App() {
       <p>{isUp ? "🟢 UP" : isDown ? "🔴 DOWN" : "⚪ STABLE"}</p>
 
       <Chart />
-
-      <div style={{ marginTop: 10 }}>
-        HISTORY:
-        {history.slice(-10).map((h, i) => (
-          <span key={i} style={{ marginLeft: 5 }}>{h}</span>
-        ))}
-      </div>
-
     </div>
   );
 
-  /* ---------------- OTHER VIEWS ---------------- */
+  /* ---------------- BANK ---------------- */
 
   const Bank = () => (
     <div style={{ flex: 1, padding: 20 }}>
       <h2>BANK</h2>
+
       <p>Deposit coming soon</p>
       <p>Withdraw coming soon</p>
+
+      <p>OC Balance: {oc}</p>
+      <p>OBC Balance: {obc}</p>
     </div>
   );
+
+  /* ---------------- HISTORY ---------------- */
 
   const History = () => (
     <div style={{ flex: 1, padding: 20 }}>
       <h2>FULL HISTORY</h2>
+
       {history.map((h, i) => (
         <div key={i}>{h}</div>
       ))}
     </div>
   );
 
+  /* ---------------- SUPPORT ---------------- */
+
   const Support = () => (
     <div style={{ flex: 1, padding: 20 }}>
       <h2>SUPPORT</h2>
-      <textarea style={{ width: "100%", height: 120 }} />
-      <button>Send</button>
+
+      <p>User ID: {userId}</p>
+
+      <textarea
+        placeholder="Write your issue..."
+        value={supportMessage}
+        onChange={(e) => setSupportMessage(e.target.value)}
+        style={{
+          width: "100%",
+          height: 120,
+          marginTop: 10,
+          padding: 10,
+        }}
+      />
+
+      <button
+        onClick={sendSupportMessage}
+        style={{
+          marginTop: 10,
+          padding: 10,
+          background: "blue",
+          color: "white",
+        }}
+      >
+        SEND MESSAGE
+      </button>
+
+      <p>{supportStatus}</p>
     </div>
   );
+
+  /* ---------------- TRADE ---------------- */
 
   const Trade = () => (
     <div style={{ width: "25%", background: "#111", padding: 15 }}>
@@ -235,17 +308,36 @@ export default function App() {
         style={{ width: "100%", padding: 10 }}
       />
 
-      <button onClick={() => trade("BUY")} style={{ width: "50%", background: "green" }}>
+      <button
+        onClick={() => trade("BUY")}
+        style={{
+          width: "50%",
+          background: "green",
+          color: "white",
+          padding: 10,
+        }}
+      >
         BUY
       </button>
 
-      <button onClick={() => trade("SELL")} style={{ width: "50%", background: "red" }}>
+      <button
+        onClick={() => trade("SELL")}
+        style={{
+          width: "50%",
+          background: "red",
+          color: "white",
+          padding: 10,
+        }}
+      >
         SELL
       </button>
 
       <h3>LOGS</h3>
+
       {logs.map((l, i) => (
-        <div key={i} style={{ fontSize: 12 }}>{l}</div>
+        <div key={i} style={{ fontSize: 12 }}>
+          {l}
+        </div>
       ))}
     </div>
   );
@@ -253,7 +345,14 @@ export default function App() {
   /* ---------------- MAIN ---------------- */
 
   return (
-    <div style={{ display: "flex", height: "100vh", background: "#0b0b0b", color: "white" }}>
+    <div
+      style={{
+        display: "flex",
+        height: "100vh",
+        background: "#0b0b0b",
+        color: "white",
+      }}
+    >
       <Nav />
 
       {view === "market" && <Market />}
