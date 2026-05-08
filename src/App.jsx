@@ -1,7 +1,17 @@
 export default function App() {
   return (
-    <div style={{ padding: 20 }}>
-      <h1>APP IS WORKING</h1>
+    <div
+      style={{
+        background: "white",
+        color: "black",
+        height: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: "30px"
+      }}
+    >
+      APP IS WORKING
     </div>
   );
 }
