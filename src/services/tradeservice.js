@@ -7,41 +7,61 @@ const supabase = createClient(
 );
 
 /* ---------------- GET RANDOM SELLER ---------------- */
-const getRandomSeller = async () => {
+const getRandomSeller = async (buyerId) => {
   const { data, error } = await supabase
     .from("wallets")
-    .select("user_id")
+    .select("user_id, obc_balance")
     .gt("obc_balance", 0);
 
   if (error || !data || data.length === 0) {
     throw new Error("No seller available");
   }
 
-  const randomIndex = Math.floor(Math.random() * data.length);
-  return data[randomIndex].user_id;
+  // remove buyer from seller pool
+  const sellers = data.filter(
+    (user) => user.user_id !== buyerId
+  );
+
+  if (sellers.length === 0) {
+    throw new Error("No seller available");
+  }
+
+  const randomIndex = Math.floor(Math.random() * sellers.length);
+
+  return sellers[randomIndex].user_id;
 };
 
 /* ---------------- CREATE TRADE ---------------- */
-export const createTrade = async ({ buyerId, amount, price }) => {
-  const sellerId = await getRandomSeller();
+export const createTrade = async ({
+  buyerId,
+  amount,
+  price
+}) => {
+  const sellerId = await getRandomSeller(buyerId);
 
   const total = amount * price;
   const fee = total * 0.01;
 
-  // lock buyer OC
+  // lock buyer funds
   await lockOC(buyerId, total + fee);
 
   // create trade request
-  await supabase.from("trade_requests").insert([
-    {
-      buyer_id: buyerId,
-      seller_id: sellerId,
-      amount,
-      price,
-      fee,
-      status: "pending"
-    }
-  ]);
+  const { error } = await supabase
+    .from("trade_requests")
+    .insert([
+      {
+        buyer_id: buyerId,
+        seller_id: sellerId,
+        amount: amount,
+        price: price,
+        fee: fee,
+        status: "pending"
+      }
+    ]);
+
+  if (error) {
+    throw new Error(error.message);
+  }
 };
 
 /* ---------------- ACCEPT TRADE ---------------- */
@@ -62,7 +82,7 @@ export const acceptTrade = async (trade) => {
     throw new Error("Seller has insufficient OBC");
   }
 
-  // update seller
+  // seller update
   await supabase
     .from("wallets")
     .update({
@@ -71,7 +91,7 @@ export const acceptTrade = async (trade) => {
     })
     .eq("user_id", trade.seller_id);
 
-  // update buyer
+  // buyer update
   await supabase
     .from("wallets")
     .update({
@@ -80,9 +100,12 @@ export const acceptTrade = async (trade) => {
     })
     .eq("user_id", trade.buyer_id);
 
+  // complete trade
   await supabase
     .from("trade_requests")
-    .update({ status: "accepted" })
+    .update({
+      status: "accepted"
+    })
     .eq("id", trade.id);
 };
 
@@ -94,6 +117,8 @@ export const rejectTrade = async (trade) => {
 
   await supabase
     .from("trade_requests")
-    .update({ status: "rejected" })
+    .update({
+      status: "rejected"
+    })
     .eq("id", trade.id);
 };
