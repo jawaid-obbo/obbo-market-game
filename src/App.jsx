@@ -6,176 +6,205 @@ const supabase = createClient(
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ3Z216cXVqYnJ0dHJqdGRhcHFoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwOTI0MzYsImV4cCI6MjA5MzY2ODQzNn0.VP3coulUoEMOcRl84-9Q4-VH7IxLdtS7CdY3xrhYE8Q"
 );
 
-/* ---------------- MARKET ---------------- */
+/* ---------------- BUY ENGINE ---------------- */
 
-function Market() {
-  const [price, setPrice] = useState(100);
+function P2P({ userId }) {
+  const [price, setPrice] = useState(0);
+  const [amount, setAmount] = useState("");
+  const [requests, setRequests] = useState([]);
 
+  /* LIVE PRICE FEED */
   useEffect(() => {
     const channel = supabase
       .channel("market")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "market_state" },
-        (payload) => setPrice(payload.new.current_price)
+        (payload) => {
+          setPrice(payload.new.current_price);
+        }
       )
       .subscribe();
 
     return () => supabase.removeChannel(channel);
   }, []);
 
-  return (
-    <div style={{ flex: 1, display: "flex", justifyContent: "center", alignItems: "center", flexDirection: "column" }}>
-      <h2>OBBO MARKET</h2>
-
-      <div style={{
-        width: 220,
-        height: 220,
-        borderRadius: "50%",
-        background: "gold",
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        fontSize: 40
-      }}>
-        {price}
-      </div>
-    </div>
-  );
-}
-
-/* ---------------- P2P TRADING ---------------- */
-
-function P2P({ userId }) {
-  const [orders, setOrders] = useState([]);
-  const [type, setType] = useState("buy");
-  const [amount, setAmount] = useState("");
-  const [price, setPrice] = useState("");
-
-  /* LOAD ORDERS */
-  const load = async () => {
+  /* LOAD SELLER SIDE REQUESTS */
+  const loadRequests = async () => {
     const { data } = await supabase
-      .from("orders")
+      .from("trade_requests")
       .select("*")
-      .eq("status", "open")
-      .order("created_at", { ascending: false });
+      .eq("seller_id", userId)
+      .eq("status", "pending");
 
-    if (data) setOrders(data);
+    if (data) setRequests(data);
   };
 
   useEffect(() => {
-    load();
+    loadRequests();
 
     const channel = supabase
-      .channel("orders-live")
+      .channel("trade_requests_live")
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "orders" },
-        () => load()
+        { event: "*", schema: "public", table: "trade_requests" },
+        () => loadRequests()
       )
       .subscribe();
 
     return () => supabase.removeChannel(channel);
   }, []);
 
-  /* CREATE ORDER */
-  const createOrder = async () => {
-    if (!amount || !price) return;
+  /* ---------------- BUY ACTION ---------------- */
 
-    await supabase.from("orders").insert([
+  const buy = async () => {
+    if (!amount) return;
+
+    const amt = Number(amount);
+
+    // 🔥 SNAPSHOT PRICE (IMPORTANT)
+    const lockedPrice = price;
+    const total = amt * lockedPrice;
+    const fee = total * 0.01;
+    const totalOC = total + fee;
+
+    // OPTIONAL: fetch seller (simple demo - first seller)
+    const { data: sellers } = await supabase
+      .from("wallets")
+      .select("*")
+      .gt("obc_balance", amt)
+      .limit(1);
+
+    if (!sellers || sellers.length === 0) {
+      alert("No sellers available");
+      return;
+    }
+
+    const seller = sellers[0];
+
+    /* CREATE TRADE REQUEST */
+    await supabase.from("trade_requests").insert([
       {
-        user_id: userId,
-        type,
-        amount: Number(amount),
-        price: Number(price),
-        status: "open",
-      },
+        buyer_id: userId,
+        seller_id: seller.user_id,
+        amount: amt,
+        price: lockedPrice,
+        total_oc: totalOC,
+        fee: fee,
+        status: "pending"
+      }
     ]);
 
     setAmount("");
-    setPrice("");
+    alert("Trade request sent to seller");
   };
 
-  /* MATCH ORDER */
-  const matchOrder = async (order) => {
-    await supabase
-      .from("orders")
-      .update({ status: "matched" })
-      .eq("id", order.id);
+  /* ---------------- SELLER ACTION ---------------- */
 
-    load();
+  const acceptTrade = async (trade) => {
+    const { amount, price, total_oc, fee } = trade;
+
+    /* WALLET FETCH */
+    const { data: sellerWallet } = await supabase
+      .from("wallets")
+      .select("*")
+      .eq("user_id", userId)
+      .single();
+
+    const { data: buyerWallet } = await supabase
+      .from("wallets")
+      .select("*")
+      .eq("user_id", trade.buyer_id)
+      .single();
+
+    if (sellerWallet.obc_balance < amount) {
+      alert("Not enough OBC");
+      return;
+    }
+
+    if (sellerWallet.oc_balance < fee) {
+      alert("Seller cannot pay fee");
+      return;
+    }
+
+    /* EXECUTE TRADE */
+
+    // Seller loses OBC
+    await supabase
+      .from("wallets")
+      .update({
+        obc_balance: sellerWallet.obc_balance - amount,
+        oc_balance: sellerWallet.oc_balance - fee
+      })
+      .eq("user_id", userId);
+
+    // Buyer receives OBC
+    await supabase
+      .from("wallets")
+      .update({
+        obc_balance: buyerWallet.obc_balance + amount,
+        locked_oc: 0
+      })
+      .eq("user_id", trade.buyer_id);
+
+    /* COMPLETE TRADE */
+    await supabase
+      .from("trade_requests")
+      .update({ status: "accepted" })
+      .eq("id", trade.id);
+
+    alert("Trade executed");
+  };
+
+  const rejectTrade = async (trade) => {
+    // refund buyer lock if any logic added later
+    await supabase
+      .from("trade_requests")
+      .update({ status: "rejected" })
+      .eq("id", trade.id);
   };
 
   return (
-    <div style={{ flex: 1, padding: 20 }}>
-      <h2>P2P TRADING</h2>
+    <div style={{ padding: 20, color: "white" }}>
 
-      {/* CREATE ORDER */}
-      <div style={{ marginBottom: 20 }}>
-        <select value={type} onChange={(e) => setType(e.target.value)}>
-          <option value="buy">BUY</option>
-          <option value="sell">SELL</option>
-        </select>
+      <h2>P2P SNAPSHOT ENGINE</h2>
+
+      {/* BUY SECTION */}
+      <div>
+        <h3>Buy OBC</h3>
+
+        <p>Live Price: {price}</p>
 
         <input
-          placeholder="amount"
+          placeholder="OBC amount"
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
         />
 
-        <input
-          placeholder="price"
-          value={price}
-          onChange={(e) => setPrice(e.target.value)}
-        />
-
-        <button onClick={createOrder}>CREATE ORDER</button>
+        <button onClick={buy}>
+          BUY (Snapshot Price)
+        </button>
       </div>
 
-      {/* ORDER BOOK */}
-      <div style={{ background: "#111", padding: 10, height: 400, overflowY: "auto" }}>
-        {orders.map((o) => (
-          <div key={o.id} style={{
-            display: "flex",
-            justifyContent: "space-between",
-            margin: 5,
-            padding: 10,
-            background: o.type === "buy" ? "#1f8b4c" : "#2b6fff",
-            color: "white"
-          }}>
-            <div>
-              {o.type.toUpperCase()} | {o.amount} @ {o.price}
-            </div>
+      {/* SELLER REQUESTS */}
+      <div style={{ marginTop: 40 }}>
+        <h3>Incoming Requests</h3>
 
-            <button onClick={() => matchOrder(o)}>
-              MATCH
-            </button>
+        {requests.map((r) => (
+          <div key={r.id} style={{ background: "#222", padding: 10, margin: 10 }}>
+            <p>BUYER: {r.buyer_id}</p>
+            <p>AMOUNT: {r.amount} OBC</p>
+            <p>PRICE: {r.price}</p>
+            <p>TOTAL: {r.total_oc}</p>
+
+            <button onClick={() => acceptTrade(r)}>ACCEPT</button>
+            <button onClick={() => rejectTrade(r)}>REJECT</button>
           </div>
         ))}
       </div>
+
     </div>
   );
 }
 
-/* ---------------- MAIN APP ---------------- */
-
-export default function App() {
-  const [view, setView] = useState("market");
-
-  return (
-    <div style={{ display: "flex", height: "100vh", color: "white", background: "#0b0b0b" }}>
-      
-      {/* MENU */}
-      <div style={{ width: 200, background: "#111", padding: 10 }}>
-        <h3>OBBO</h3>
-
-        <button onClick={() => setView("market")}>Market</button>
-        <button onClick={() => setView("p2p")}>P2P Trade</button>
-      </div>
-
-      {/* MAIN */}
-      {view === "market" && <Market />}
-      {view === "p2p" && <P2P userId="000001" />}
-    </div>
-  );
-}
+export default P2P;
