@@ -17,7 +17,7 @@ const MarketView = memo(({ price, prevPrice, history }) => {
 
   return (
     <div style={{ flex: 1, textAlign: "center", paddingTop: 40 }}>
-      <h2>MARKET</h2>
+      <h2>OBBO MARKET</h2>
 
       <div
         style={{
@@ -40,7 +40,7 @@ const MarketView = memo(({ price, prevPrice, history }) => {
           transition: "0.3s",
         }}
       >
-        🅱 {price}
+        {price}
       </div>
 
       <p>{isUp ? "🟢 UP" : isDown ? "🔴 DOWN" : "⚪ STABLE"}</p>
@@ -81,7 +81,6 @@ const SupportChat = memo(({ userId }) => {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
 
-  /* LOAD CHAT */
   useEffect(() => {
     const load = async () => {
       const { data } = await supabase
@@ -99,7 +98,6 @@ const SupportChat = memo(({ userId }) => {
     return () => clearInterval(interval);
   }, []);
 
-  /* SEND MESSAGE */
   const send = async () => {
     if (!input.trim()) return;
 
@@ -118,7 +116,6 @@ const SupportChat = memo(({ userId }) => {
     <div style={{ flex: 1, padding: 20, display: "flex", flexDirection: "column" }}>
       <h2>SUPPORT CHAT</h2>
 
-      {/* CHAT BOX */}
       <div
         style={{
           flex: 1,
@@ -150,10 +147,84 @@ const SupportChat = memo(({ userId }) => {
         ))}
       </div>
 
-      {/* INPUT */}
       <div style={{ display: "flex" }}>
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Type message..."
-          style={{ flex
+          style={{ flex: 1, padding: 10 }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              send();
+            }
+          }}
+        />
+        <button onClick={send} style={{ padding: 10 }}>
+          SEND
+        </button>
+      </div>
+    </div>
+  );
+});
+
+/* ---------------- MAIN APP ---------------- */
+
+export default function App() {
+  const userId = "000001";
+
+  const [view, setView] = useState("market");
+
+  const [price, setPrice] = useState(0);
+  const [prevPrice, setPrevPrice] = useState(0);
+
+  const [history, setHistory] = useState([]);
+
+  const intervalRef = useRef(null);
+
+  useEffect(() => {
+    const load = async () => {
+      const { data } = await supabase
+        .from("market_state")
+        .select("current_price")
+        .eq("id", 1)
+        .single();
+
+      if (data) {
+        setPrevPrice((p) => price);
+        setPrice(data.current_price);
+
+        setHistory((h) =>
+          [...h, data.current_price].slice(-30)
+        );
+      }
+    };
+
+    load();
+    intervalRef.current = setInterval(load, 5000);
+
+    return () => clearInterval(intervalRef.current);
+  }, [price]);
+
+  return (
+    <div style={{ display: "flex", height: "100vh", background: "#0b0b0b", color: "white" }}>
+      
+      {/* NAV */}
+      <div style={{ width: 200, background: "#111", padding: 10 }}>
+        <h3>OBBO</h3>
+
+        <button onClick={() => setView("market")}>Market</button>
+        <button onClick={() => setView("support")}>Support</button>
+      </div>
+
+      {/* MAIN */}
+      {view === "market" && (
+        <MarketView price={price} prevPrice={prevPrice} history={history} />
+      )}
+
+      {view === "support" && (
+        <SupportChat userId={userId} />
+      )}
+    </div>
+  );
+}
