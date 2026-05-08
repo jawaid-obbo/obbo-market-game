@@ -6,15 +6,32 @@ const supabase = createClient(
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ3Z216cXVqYnJ0dHJqdGRhcHFoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwOTI0MzYsImV4cCI6MjA5MzY2ODQzNn0.VP3coulUoEMOcRl84-9Q4-VH7IxLdtS7CdY3xrhYE8Q"
 );
 
-/* ---------------- CREATE TRADE (BUY CLICK) ---------------- */
-export const createTrade = async ({ buyerId, sellerId, amount, price }) => {
+/* ---------------- GET RANDOM SELLER ---------------- */
+const getRandomSeller = async () => {
+  const { data, error } = await supabase
+    .from("wallets")
+    .select("user_id")
+    .gt("obc_balance", 0);
+
+  if (error || !data || data.length === 0) {
+    throw new Error("No seller available");
+  }
+
+  const randomIndex = Math.floor(Math.random() * data.length);
+  return data[randomIndex].user_id;
+};
+
+/* ---------------- CREATE TRADE ---------------- */
+export const createTrade = async ({ buyerId, amount, price }) => {
+  const sellerId = await getRandomSeller();
+
   const total = amount * price;
   const fee = total * 0.01;
 
-  // STEP 1: LOCK BUYER FUNDS
+  // lock buyer OC
   await lockOC(buyerId, total + fee);
 
-  // STEP 2: CREATE TRADE REQUEST
+  // create trade request
   await supabase.from("trade_requests").insert([
     {
       buyer_id: buyerId,
@@ -45,7 +62,7 @@ export const acceptTrade = async (trade) => {
     throw new Error("Seller has insufficient OBC");
   }
 
-  // SELLER UPDATE
+  // update seller
   await supabase
     .from("wallets")
     .update({
@@ -54,7 +71,7 @@ export const acceptTrade = async (trade) => {
     })
     .eq("user_id", trade.seller_id);
 
-  // BUYER UPDATE
+  // update buyer
   await supabase
     .from("wallets")
     .update({
@@ -63,7 +80,6 @@ export const acceptTrade = async (trade) => {
     })
     .eq("user_id", trade.buyer_id);
 
-  // MARK COMPLETE
   await supabase
     .from("trade_requests")
     .update({ status: "accepted" })
