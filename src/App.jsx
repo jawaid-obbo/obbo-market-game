@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -27,230 +27,155 @@ function Market() {
   return (
     <div style={{ flex: 1, display: "flex", justifyContent: "center", alignItems: "center", flexDirection: "column" }}>
       <h2>OBBO MARKET</h2>
-      <div style={{ width: 200, height: 200, borderRadius: "50%", background: "gold", display: "flex", justifyContent: "center", alignItems: "center", fontSize: 40 }}>
+
+      <div style={{
+        width: 220,
+        height: 220,
+        borderRadius: "50%",
+        background: "gold",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        fontSize: 40
+      }}>
         {price}
       </div>
     </div>
   );
 }
 
-/* ---------------- GLOBAL CHAT STORE ---------------- */
+/* ---------------- P2P TRADING ---------------- */
 
-function useChat(userId) {
-  const [messages, setMessages] = useState([]);
+function P2P({ userId }) {
+  const [orders, setOrders] = useState([]);
+  const [type, setType] = useState("buy");
+  const [amount, setAmount] = useState("");
+  const [price, setPrice] = useState("");
+
+  /* LOAD ORDERS */
+  const load = async () => {
+    const { data } = await supabase
+      .from("orders")
+      .select("*")
+      .eq("status", "open")
+      .order("created_at", { ascending: false });
+
+    if (data) setOrders(data);
+  };
 
   useEffect(() => {
-    // initial load
     load();
 
-    // ONE GLOBAL CHANNEL (IMPORTANT FIX)
     const channel = supabase
-      .channel("global-chat")
+      .channel("orders-live")
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "support_chat" },
-        (payload) => {
-          // only show relevant messages
-          if (
-            payload.new.user_id === userId ||
-            payload.new.sender === "admin"
-          ) {
-            setMessages((prev) => [...prev, payload.new]);
-          }
-        }
+        { event: "*", schema: "public", table: "orders" },
+        () => load()
       )
       .subscribe();
 
     return () => supabase.removeChannel(channel);
-  }, [userId]);
+  }, []);
 
-  const load = async () => {
-    const { data } = await supabase
-      .from("support_chat")
-      .select("*")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: true });
+  /* CREATE ORDER */
+  const createOrder = async () => {
+    if (!amount || !price) return;
 
-    if (data) setMessages(data);
+    await supabase.from("orders").insert([
+      {
+        user_id: userId,
+        type,
+        amount: Number(amount),
+        price: Number(price),
+        status: "open",
+      },
+    ]);
+
+    setAmount("");
+    setPrice("");
   };
 
-  return { messages, setMessages };
-}
+  /* MATCH ORDER */
+  const matchOrder = async (order) => {
+    await supabase
+      .from("orders")
+      .update({ status: "matched" })
+      .eq("id", order.id);
 
-/* ---------------- USER CHAT ---------------- */
-
-function UserChat({ userId }) {
-  const { messages, setMessages } = useChat(userId);
-  const [input, setInput] = useState("");
-  const inputRef = useRef("");
-
-  const send = async () => {
-    const msg = inputRef.current;
-    if (!msg) return;
-
-    setMessages((p) => [...p, { id: Date.now(), sender: "user", message: msg }]);
-
-    inputRef.current = "";
-    setInput("");
-
-    await supabase.from("support_chat").insert([
-      { user_id: userId, sender: "user", message: msg }
-    ]);
+    load();
   };
 
   return (
     <div style={{ flex: 1, padding: 20 }}>
-      <h2>SUPPORT</h2>
+      <h2>P2P TRADING</h2>
 
-      <div style={{ height: 400, overflow: "auto", background: "#111", padding: 10 }}>
-        {messages.map((m) => (
-          <div key={m.id} style={{ textAlign: m.sender === "user" ? "right" : "left" }}>
-            <span style={{
-              background: m.sender === "user" ? "#2b6fff" : "#1f8b4c",
-              padding: 10,
-              borderRadius: 10,
-              display: "inline-block",
-              margin: 5,
-              color: "white"
-            }}>
-              {m.message}
-            </span>
+      {/* CREATE ORDER */}
+      <div style={{ marginBottom: 20 }}>
+        <select value={type} onChange={(e) => setType(e.target.value)}>
+          <option value="buy">BUY</option>
+          <option value="sell">SELL</option>
+        </select>
+
+        <input
+          placeholder="amount"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+        />
+
+        <input
+          placeholder="price"
+          value={price}
+          onChange={(e) => setPrice(e.target.value)}
+        />
+
+        <button onClick={createOrder}>CREATE ORDER</button>
+      </div>
+
+      {/* ORDER BOOK */}
+      <div style={{ background: "#111", padding: 10, height: 400, overflowY: "auto" }}>
+        {orders.map((o) => (
+          <div key={o.id} style={{
+            display: "flex",
+            justifyContent: "space-between",
+            margin: 5,
+            padding: 10,
+            background: o.type === "buy" ? "#1f8b4c" : "#2b6fff",
+            color: "white"
+          }}>
+            <div>
+              {o.type.toUpperCase()} | {o.amount} @ {o.price}
+            </div>
+
+            <button onClick={() => matchOrder(o)}>
+              MATCH
+            </button>
           </div>
         ))}
       </div>
-
-      <input
-        value={input}
-        onChange={(e) => {
-          setInput(e.target.value);
-          inputRef.current = e.target.value;
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            send();
-          }
-        }}
-        style={{ width: "80%", padding: 10 }}
-      />
-
-      <button onClick={send}>SEND</button>
     </div>
   );
 }
 
-/* ---------------- ADMIN CHAT ---------------- */
-
-function AdminChat() {
-  const [users, setUsers] = useState([]);
-  const [activeUser, setActiveUser] = useState("000001");
-  const { messages, setMessages } = useChat(activeUser);
-  const [reply, setReply] = useState("");
-  const replyRef = useRef("");
-
-  useEffect(() => {
-    loadUsers();
-  }, []);
-
-  const loadUsers = async () => {
-    const { data } = await supabase.from("support_chat").select("user_id");
-    const unique = [...new Set(data.map((u) => u.user_id))];
-    setUsers(unique);
-  };
-
-  const sendReply = async () => {
-    const msg = replyRef.current;
-    if (!msg) return;
-
-    setMessages((p) => [...p, { id: Date.now(), sender: "admin", message: msg }]);
-
-    replyRef.current = "";
-    setReply("");
-
-    await supabase.from("support_chat").insert([
-      { user_id: activeUser, sender: "admin", message: msg }
-    ]);
-  };
-
-  return (
-    <div style={{ display: "flex", flex: 1 }}>
-      
-      <div style={{ width: 200, background: "#111", padding: 10 }}>
-        <h3>USERS</h3>
-
-        {users.map((u) => (
-          <button key={u} onClick={() => setActiveUser(u)}>
-            {u}
-          </button>
-        ))}
-      </div>
-
-      <div style={{ flex: 1, padding: 20 }}>
-        <h3>ADMIN CHAT</h3>
-
-        <div style={{ height: 400, overflow: "auto", background: "#111", padding: 10 }}>
-          {messages.map((m) => (
-            <div key={m.id} style={{ textAlign: m.sender === "admin" ? "left" : "right" }}>
-              <span style={{
-                background: m.sender === "admin" ? "#1f8b4c" : "#2b6fff",
-                padding: 10,
-                borderRadius: 10,
-                display: "inline-block",
-                margin: 5,
-                color: "white"
-              }}>
-                {m.message}
-              </span>
-            </div>
-          ))}
-        </div>
-
-        <input
-          value={reply}
-          onChange={(e) => {
-            setReply(e.target.value);
-            replyRef.current = e.target.value;
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              sendReply();
-            }
-          }}
-          style={{ width: "80%", padding: 10 }}
-        />
-
-        <button onClick={sendReply}>REPLY</button>
-      </div>
-    </div>
-  );
-}
-
-/* ---------------- MAIN ---------------- */
+/* ---------------- MAIN APP ---------------- */
 
 export default function App() {
   const [view, setView] = useState("market");
-  const [admin, setAdmin] = useState(false);
 
   return (
     <div style={{ display: "flex", height: "100vh", color: "white", background: "#0b0b0b" }}>
       
+      {/* MENU */}
       <div style={{ width: 200, background: "#111", padding: 10 }}>
         <h3>OBBO</h3>
 
         <button onClick={() => setView("market")}>Market</button>
-        <button onClick={() => setView("support")}>Support</button>
-
-        <hr />
-
-        <button onClick={() => setAdmin(!admin)}>
-          {admin ? "Exit Admin" : "Admin Mode"}
-        </button>
+        <button onClick={() => setView("p2p")}>P2P Trade</button>
       </div>
 
-      {!admin && view === "market" && <Market />}
-      {!admin && view === "support" && <UserChat userId="000001" />}
-      {admin && <AdminChat />}
+      {/* MAIN */}
+      {view === "market" && <Market />}
+      {view === "p2p" && <P2P userId="000001" />}
     </div>
   );
 }
