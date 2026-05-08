@@ -81,8 +81,6 @@ const SupportChat = memo(({ userId }) => {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
 
-  const chatRef = useRef(null);
-
   /* LOAD CHAT */
   useEffect(() => {
     const load = async () => {
@@ -122,7 +120,6 @@ const SupportChat = memo(({ userId }) => {
 
       {/* CHAT BOX */}
       <div
-        ref={chatRef}
         style={{
           flex: 1,
           overflowY: "auto",
@@ -159,74 +156,4 @@ const SupportChat = memo(({ userId }) => {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Type message..."
-          style={{ flex: 1, padding: 10 }}
-        />
-        <button onClick={send} style={{ padding: 10 }}>
-          SEND
-        </button>
-      </div>
-    </div>
-  );
-});
-
-/* ---------------- MAIN APP ---------------- */
-
-export default function App() {
-  const userId = "000001";
-
-  const [view, setView] = useState("market");
-
-  const [price, setPrice] = useState(0);
-  const [prevPrice, setPrevPrice] = useState(0);
-
-  const [history, setHistory] = useState([]);
-
-  const intervalRef = useRef(null);
-
-  /* MARKET ENGINE */
-  useEffect(() => {
-    const load = async () => {
-      const { data } = await supabase
-        .from("market_state")
-        .select("current_price")
-        .eq("id", 1)
-        .single();
-
-      if (data) {
-        setPrevPrice((p) => price);
-        setPrice(data.current_price);
-
-        setHistory((h) =>
-          [...h, data.current_price].slice(-30)
-        );
-      }
-    };
-
-    load();
-    intervalRef.current = setInterval(load, 5000);
-
-    return () => clearInterval(intervalRef.current);
-  }, [price]);
-
-  return (
-    <div style={{ display: "flex", height: "100vh", color: "white", background: "#0b0b0b" }}>
-      
-      {/* NAV */}
-      <div style={{ width: 200, background: "#111", padding: 10 }}>
-        <h3>OBBO</h3>
-
-        <button onClick={() => setView("market")}>Market</button>
-        <button onClick={() => setView("support")}>Support</button>
-      </div>
-
-      {/* MAIN */}
-      {view === "market" && (
-        <MarketView price={price} prevPrice={prevPrice} history={history} />
-      )}
-
-      {view === "support" && (
-        <SupportChat userId={userId} />
-      )}
-    </div>
-  );
-}
+          style={{ flex
