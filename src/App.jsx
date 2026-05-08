@@ -6,7 +6,7 @@ const supabase = createClient(
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ3Z216cXVqYnJ0dHJqdGRhcHFoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgwOTI0MzYsImV4cCI6MjA5MzY2ODQzNn0.VP3coulUoEMOcRl84-9Q4-VH7IxLdtS7CdY3xrhYE8Q"
 );
 
-/* ---------------- MARKET VIEW ---------------- */
+/* ---------------- MARKET ---------------- */
 
 const MarketView = memo(({ price, prevPrice, history }) => {
   const isUp = price > prevPrice;
@@ -17,13 +17,7 @@ const MarketView = memo(({ price, prevPrice, history }) => {
 
   return (
     <div style={{ flex: 1, textAlign: "center", paddingTop: 40 }}>
-      <div style={{ background: "red", padding: 5, fontSize: 12 }}>
-        ⚠ OBBO not responsible for trading loss
-      </div>
-
-      <div style={{ background: "green", padding: 5, fontSize: 12 }}>
-        OBBO COMPANY OBLIGED: OC 1 = PKR 1
-      </div>
+      <h2>MARKET</h2>
 
       <div
         style={{
@@ -43,11 +37,6 @@ const MarketView = memo(({ price, prevPrice, history }) => {
             : isDown
             ? "0 0 40px red"
             : "0 0 30px gold",
-          transform: isUp
-            ? "scale(1.05)"
-            : isDown
-            ? "scale(0.98)"
-            : "scale(1)",
           transition: "0.3s",
         }}
       >
@@ -56,101 +45,126 @@ const MarketView = memo(({ price, prevPrice, history }) => {
 
       <p>{isUp ? "🟢 UP" : isDown ? "🔴 DOWN" : "⚪ STABLE"}</p>
 
-      {/* CHART */}
-      <div style={{ marginTop: 20 }}>
-        <svg width="320" height="120">
-          {history.map((p, i) => {
-            if (i === 0) return null;
+      <svg width="320" height="120">
+        {history.map((p, i) => {
+          if (i === 0) return null;
 
-            const x1 = (i - 1) * (300 / history.length);
-            const x2 = i * (300 / history.length);
+          const x1 = (i - 1) * (300 / history.length);
+          const x2 = i * (300 / history.length);
 
-            const y1 =
-              100 -
-              ((history[i - 1] - min) / (max - min || 1)) * 100;
+          const y1 =
+            100 - ((history[i - 1] - min) / (max - min || 1)) * 100;
 
-            const y2 =
-              100 -
-              ((p - min) / (max - min || 1)) * 100;
+          const y2 =
+            100 - ((p - min) / (max - min || 1)) * 100;
 
-            return (
-              <line
-                key={i}
-                x1={x1}
-                y1={y1}
-                x2={x2}
-                y2={y2}
-                stroke="lime"
-                strokeWidth="2"
-              />
-            );
-          })}
-        </svg>
-      </div>
+          return (
+            <line
+              key={i}
+              x1={x1}
+              y1={y1}
+              x2={x2}
+              y2={y2}
+              stroke="lime"
+              strokeWidth="2"
+            />
+          );
+        })}
+      </svg>
     </div>
   );
 });
 
-/* ---------------- SUPPORT ---------------- */
+/* ---------------- SUPPORT CHAT ---------------- */
 
-const SupportView = memo(({ userId }) => {
-  const [message, setMessage] = useState("");
-  const [status, setStatus] = useState("");
+const SupportChat = memo(({ userId }) => {
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
 
-  const sendMessage = async () => {
-    if (!message.trim()) {
-      setStatus("Please write message");
-      return;
-    }
+  const chatRef = useRef(null);
 
-    const { error } = await supabase
-      .from("support_messages")
-      .insert([
-        {
-          user_id: userId,
-          message,
-        },
-      ]);
+  /* LOAD CHAT */
+  useEffect(() => {
+    const load = async () => {
+      const { data } = await supabase
+        .from("support_chat")
+        .select("*")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: true });
 
-    if (error) {
-      setStatus("Error sending message");
-    } else {
-      setStatus("Message sent");
-      setMessage("");
-    }
+      if (data) setMessages(data);
+    };
+
+    load();
+    const interval = setInterval(load, 5000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  /* SEND MESSAGE */
+  const send = async () => {
+    if (!input.trim()) return;
+
+    await supabase.from("support_chat").insert([
+      {
+        user_id: userId,
+        sender: "user",
+        message: input,
+      },
+    ]);
+
+    setInput("");
   };
 
   return (
-    <div style={{ flex: 1, padding: 20 }}>
-      <h2>SUPPORT</h2>
+    <div style={{ flex: 1, padding: 20, display: "flex", flexDirection: "column" }}>
+      <h2>SUPPORT CHAT</h2>
 
-      <p>User ID: {userId}</p>
-
-      <textarea
-        value={message}
-        onChange={(e) => setMessage(e.target.value)}
-        placeholder="Write your issue..."
+      {/* CHAT BOX */}
+      <div
+        ref={chatRef}
         style={{
-          width: "100%",
-          height: 120,
+          flex: 1,
+          overflowY: "auto",
+          background: "#111",
           padding: 10,
-          outline: "none",
-        }}
-      />
-
-      <button
-        onClick={sendMessage}
-        style={{
-          marginTop: 10,
-          padding: 10,
-          background: "blue",
-          color: "white",
+          marginBottom: 10,
         }}
       >
-        SEND MESSAGE
-      </button>
+        {messages.map((m) => (
+          <div
+            key={m.id}
+            style={{
+              textAlign: m.sender === "user" ? "right" : "left",
+              margin: "5px 0",
+            }}
+          >
+            <span
+              style={{
+                background: m.sender === "user" ? "blue" : "gray",
+                padding: 8,
+                borderRadius: 8,
+                display: "inline-block",
+              }}
+            >
+              {m.message}
+            </span>
+          </div>
+        ))}
+      </div>
 
-      <p>{status}</p>
+      {/* INPUT */}
+      <div style={{ display: "flex" }}>
+        <input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder="Type message..."
+          style={{ flex: 1, padding: 10 }}
+        />
+        <button onClick={send} style={{ padding: 10 }}>
+          SEND
+        </button>
+      </div>
     </div>
   );
 });
@@ -165,185 +179,54 @@ export default function App() {
   const [price, setPrice] = useState(0);
   const [prevPrice, setPrevPrice] = useState(0);
 
-  const [oc, setOc] = useState(0);
-  const [obc, setObc] = useState(0);
-
-  const [qty, setQty] = useState(1);
-
   const [history, setHistory] = useState([]);
-  const [logs, setLogs] = useState([]);
 
   const intervalRef = useRef(null);
 
-  /* ---------------- LIVE ENGINE ---------------- */
-
+  /* MARKET ENGINE */
   useEffect(() => {
     const load = async () => {
-      const { data: market } = await supabase
+      const { data } = await supabase
         .from("market_state")
         .select("current_price")
         .eq("id", 1)
         .single();
 
-      if (market) {
-        setPrevPrice((prev) => price);
-        setPrice(market.current_price);
+      if (data) {
+        setPrevPrice((p) => price);
+        setPrice(data.current_price);
 
         setHistory((h) =>
-          [...h, market.current_price].slice(-25)
+          [...h, data.current_price].slice(-30)
         );
-      }
-
-      const { data: wallet } = await supabase
-        .from("wallets")
-        .select("oc_balance, obc_balance")
-        .eq("user_id", userId)
-        .single();
-
-      if (wallet) {
-        setOc(wallet.oc_balance);
-        setObc(wallet.obc_balance);
       }
     };
 
     load();
-
     intervalRef.current = setInterval(load, 5000);
 
     return () => clearInterval(intervalRef.current);
   }, [price]);
 
-  /* ---------------- TRADE ---------------- */
-
-  const trade = async (type) => {
-    const { data } = await supabase.functions.invoke(
-      "trade-execute",
-      {
-        body: {
-          user_id: userId,
-          type,
-          quantity: qty,
-        },
-      }
-    );
-
-    if (data) {
-      setOc(data.oc);
-      setObc(data.obc);
-
-      setLogs((l) => [
-        `${type} ${qty} @ ${data.price}`,
-        ...l,
-      ]);
-    }
-  };
-
-  /* ---------------- NAV ---------------- */
-
-  const Nav = () => (
-    <div style={{ width: "22%", background: "#111", padding: 15 }}>
-      <h2>OBBO</h2>
-
-      <p>ID: {userId}</p>
-      <p>OC: {oc}</p>
-      <p>OBC: {obc}</p>
-
-      <hr />
-
-      <button onClick={() => setView("market")}>Market</button>
-      <button onClick={() => setView("bank")}>Bank</button>
-      <button onClick={() => setView("history")}>History</button>
-      <button onClick={() => setView("support")}>Support</button>
-    </div>
-  );
-
-  /* ---------------- TRADE PANEL ---------------- */
-
-  const TradePanel = memo(() => (
-    <div style={{ width: "25%", background: "#111", padding: 15 }}>
-      <h2>TRADE</h2>
-
-      <input
-        type="number"
-        value={qty}
-        onChange={(e) => setQty(Number(e.target.value))}
-        style={{ width: "100%", padding: 10 }}
-      />
-
-      <button
-        onClick={() => trade("BUY")}
-        style={{
-          width: "50%",
-          background: "green",
-          color: "white",
-          padding: 10,
-        }}
-      >
-        BUY
-      </button>
-
-      <button
-        onClick={() => trade("SELL")}
-        style={{
-          width: "50%",
-          background: "red",
-          color: "white",
-          padding: 10,
-        }}
-      >
-        SELL
-      </button>
-
-      <h3>LOGS</h3>
-
-      {logs.map((l, i) => (
-        <div key={i}>{l}</div>
-      ))}
-    </div>
-  ));
-
   return (
-    <div
-      style={{
-        display: "flex",
-        height: "100vh",
-        background: "#0b0b0b",
-        color: "white",
-      }}
-    >
-      <Nav />
+    <div style={{ display: "flex", height: "100vh", color: "white", background: "#0b0b0b" }}>
+      
+      {/* NAV */}
+      <div style={{ width: 200, background: "#111", padding: 10 }}>
+        <h3>OBBO</h3>
 
+        <button onClick={() => setView("market")}>Market</button>
+        <button onClick={() => setView("support")}>Support</button>
+      </div>
+
+      {/* MAIN */}
       {view === "market" && (
-        <MarketView
-          price={price}
-          prevPrice={prevPrice}
-          history={history}
-        />
-      )}
-
-      {view === "bank" && (
-        <div style={{ flex: 1, padding: 20 }}>
-          <h2>BANK</h2>
-          <p>Deposit coming soon</p>
-          <p>Withdraw coming soon</p>
-        </div>
-      )}
-
-      {view === "history" && (
-        <div style={{ flex: 1, padding: 20 }}>
-          <h2>FULL HISTORY</h2>
-
-          {history.map((h, i) => (
-            <div key={i}>{h}</div>
-          ))}
-        </div>
+        <MarketView price={price} prevPrice={prevPrice} history={history} />
       )}
 
       {view === "support" && (
-        <SupportView userId={userId} />
+        <SupportChat userId={userId} />
       )}
-
-      <TradePanel />
     </div>
   );
 }
